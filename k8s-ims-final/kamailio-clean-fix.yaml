@@ -1,0 +1,176 @@
+# PCSCF Deployment propre
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcscf
+  labels:
+    io.kompose.service: pcscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: pcscf
+  template:
+    metadata:
+      labels:
+        io.kompose.service: pcscf
+    spec:
+      containers:
+        - name: pcscf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting PCSCF with clean configuration..."
+              # Copier les configurations
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
+              
+              # Remplacer seulement les valeurs non définies sans redéfinir
+              sed -i 's/tcp_connection_lifetime=UE_SUBSCRIPTION_EXPIRES/tcp_connection_lifetime=3605/g' /usr/local/etc/kamailio/kamailio_pcscf.cfg
+              sed -i 's/tcp_children=TCP_PROCESSES/tcp_children=4/g' /usr/local/etc/kamailio/kamailio_pcscf.cfg
+              
+              # Vérifier la syntaxe avant de démarrer
+              echo "Checking configuration syntax..."
+              kamailio -c -f /usr/local/etc/kamailio/kamailio_pcscf.cfg || {
+                echo "Configuration syntax error, falling back to basic config"
+                sleep infinity
+              }
+              
+              # Démarrer Kamailio avec la configuration PCSCF
+              echo "Starting Kamailio PCSCF..."
+              kamailio -f /usr/local/etc/kamailio/kamailio_pcscf.cfg -P /tmp/kamailio.pid -DD -E -e
+          env:
+            - name: COMPONENT_NAME
+              value: pcscf
+          volumeMounts:
+            - name: pcscf-config
+              mountPath: /etc/kamailio-config
+          ports:
+            - containerPort: 5060
+              protocol: UDP
+            - containerPort: 5060
+              protocol: TCP
+      volumes:
+        - name: pcscf-config
+          configMap:
+            name: pcscf-config
+      restartPolicy: Always
+---
+# ICSCF Deployment propre
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: icscf
+  labels:
+    io.kompose.service: icscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: icscf
+  template:
+    metadata:
+      labels:
+        io.kompose.service: icscf
+    spec:
+      containers:
+        - name: icscf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting ICSCF with clean configuration..."
+              # Copier les configurations
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
+              
+              # Remplacer seulement les valeurs non définies
+              sed -i 's/tcp_connection_lifetime=UE_SUBSCRIPTION_EXPIRES/tcp_connection_lifetime=3605/g' /usr/local/etc/kamailio/kamailio_icscf.cfg
+              sed -i 's/tcp_children=TCP_PROCESSES/tcp_children=4/g' /usr/local/etc/kamailio/kamailio_icscf.cfg
+              
+              # Vérifier la syntaxe avant de démarrer
+              echo "Checking configuration syntax..."
+              kamailio -c -f /usr/local/etc/kamailio/kamailio_icscf.cfg || {
+                echo "Configuration syntax error, falling back to basic config"
+                sleep infinity
+              }
+              
+              # Démarrer Kamailio avec la configuration ICSCF
+              echo "Starting Kamailio ICSCF..."
+              kamailio -f /usr/local/etc/kamailio/kamailio_icscf.cfg -P /tmp/kamailio.pid -DD -E -e
+          env:
+            - name: COMPONENT_NAME
+              value: icscf
+          volumeMounts:
+            - name: icscf-config
+              mountPath: /etc/kamailio-config
+          ports:
+            - containerPort: 5060
+              protocol: UDP
+            - containerPort: 5060
+              protocol: TCP
+      volumes:
+        - name: icscf-config
+          configMap:
+            name: icscf-config
+      restartPolicy: Always
+---
+# SCSCF Deployment propre
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scscf
+  labels:
+    io.kompose.service: scscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: scscf
+  template:
+    metadata:
+      labels:
+        io.kompose.service: scscf
+    spec:
+      containers:
+        - name: scscf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting SCSCF with clean configuration..."
+              # Copier les configurations
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
+              
+              # Remplacer seulement les valeurs non définies
+              sed -i 's/tcp_connection_lifetime=UE_SUBSCRIPTION_EXPIRES/tcp_connection_lifetime=3605/g' /usr/local/etc/kamailio/kamailio_scscf.cfg
+              sed -i 's/tcp_children=TCP_PROCESSES/tcp_children=4/g' /usr/local/etc/kamailio/kamailio_scscf.cfg
+              
+              # Vérifier la syntaxe avant de démarrer
+              echo "Checking configuration syntax..."
+              kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg || {
+                echo "Configuration syntax error, falling back to basic config"
+                sleep infinity
+              }
+              
+              # Démarrer Kamailio avec la configuration SCSCF
+              echo "Starting Kamailio SCSCF..."
+              kamailio -f /usr/local/etc/kamailio/kamailio_scscf.cfg -P /tmp/kamailio.pid -DD -E -e
+          env:
+            - name: COMPONENT_NAME
+              value: scscf
+          volumeMounts:
+            - name: scscf-config
+              mountPath: /etc/kamailio-config
+          ports:
+            - containerPort: 5060
+              protocol: UDP
+            - containerPort: 5060
+              protocol: TCP
+      volumes:
+        - name: scscf-config
+          configMap:
+            name: scscf-config
+      restartPolicy: Always

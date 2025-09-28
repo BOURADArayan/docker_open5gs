@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f ../ims-complete-deploy.yaml --out .
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: hss
+  name: hss
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hss
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f ../ims-complete-deploy.yaml --out .
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: hss
+    spec:
+      containers:
+        - name: hss
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_open5gs:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting HSS Open5GS with MongoDB..."
+              mkdir -p /tmp/open5gs/logs
+              # Update the MongoDB connection to use the service name
+              sed -i 's/mongodb:\/\/localhost/mongodb:\/\/mongo/g' /open5gs/install/etc/open5gs/hss.yaml
+              /open5gs/install/bin/open5gs-hssd -c /open5gs/install/etc/open5gs/hss.yaml -l /tmp/open5gs/logs/hss.log
+          env:
+            - name: COMPONENT_NAME
+              value: hss
+          # Add liveness and readiness probes
+          livenessProbe:
+            exec:
+              command:
+              - pgrep
+              - open5gs-hssd
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+              - pgrep
+              - open5gs-hssd
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      restartPolicy: Always

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f ../ims-complete-deploy.yaml --out .
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: icscf
+  name: icscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: icscf
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f ../ims-complete-deploy.yaml --out .
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: icscf
+    spec:
+      containers:
+        - name: icscf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting ICSCF with specific configuration..."
+              # Copier les configurations spécifiques
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
+              # Démarrer avec la configuration ICSCF spécifique
+              kamailio -f /usr/local/etc/kamailio/kamailio_icscf.cfg -P /tmp/kamailio.pid -DD -E -e
+          env:
+            - name: COMPONENT_NAME
+              value: icscf
+          volumeMounts:
+            - name: icscf-config
+              mountPath: /etc/kamailio-config
+          ports:
+            - containerPort: 5060
+              protocol: UDP
+            - containerPort: 5060
+              protocol: TCP
+      volumes:
+        - name: icscf-config
+          configMap:
+            name: icscf-config
+      restartPolicy: Always

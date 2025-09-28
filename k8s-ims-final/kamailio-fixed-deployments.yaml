@@ -1,0 +1,184 @@
+# PCSCF Deployment corrigé
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcscf
+  labels:
+    io.kompose.service: pcscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: pcscf
+  template:
+    metadata:
+      labels:
+        io.kompose.service: pcscf
+    spec:
+      containers:
+        - name: pcscf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting PCSCF with specific configuration..."
+              # Définir les variables d'environnement nécessaires
+              export PCSCF_IP=$(hostname -i)
+              export LISTEN_IP=$PCSCF_IP
+              export NETWORK_IP=$PCSCF_IP
+              export PCSCF_PORT=5060
+              export HSS_IP=hss.ims.svc.cluster.local
+              export ICSCF_IP=icscf.ims.svc.cluster.local
+              export SCSCF_IP=scscf.ims.svc.cluster.local
+              
+              # Copier les configurations spécifiques
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
+              
+              # Remplacer les variables dans la configuration
+              sed -i "s/PCSCF_IP/$PCSCF_IP/g" /usr/local/etc/kamailio/kamailio_pcscf.cfg
+              sed -i "s/LISTEN_IP/$LISTEN_IP/g" /usr/local/etc/kamailio/kamailio_pcscf.cfg
+              sed -i "s/NETWORK_IP/$NETWORK_IP/g" /usr/local/etc/kamailio/kamailio_pcscf.cfg
+              
+              # Démarrer avec la configuration PCSCF spécifique
+              kamailio -f /usr/local/etc/kamailio/kamailio_pcscf.cfg -P /tmp/kamailio.pid -DD -E -e
+          env:
+            - name: COMPONENT_NAME
+              value: pcscf
+          volumeMounts:
+            - name: pcscf-config
+              mountPath: /etc/kamailio-config
+          ports:
+            - containerPort: 5060
+              protocol: UDP
+            - containerPort: 5060
+              protocol: TCP
+      volumes:
+        - name: pcscf-config
+          configMap:
+            name: pcscf-config
+      restartPolicy: Always
+---
+# ICSCF Deployment corrigé  
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: icscf
+  labels:
+    io.kompose.service: icscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: icscf
+  template:
+    metadata:
+      labels:
+        io.kompose.service: icscf
+    spec:
+      containers:
+        - name: icscf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting ICSCF with specific configuration..."
+              # Définir les variables d'environnement nécessaires
+              export ICSCF_IP=$(hostname -i)
+              export LISTEN_IP=$ICSCF_IP
+              export NETWORK_IP=$ICSCF_IP
+              export ICSCF_PORT=5060
+              export HSS_IP=hss.ims.svc.cluster.local
+              export MYSQL_IP=mysql.ims.svc.cluster.local
+              export SCSCF_IP=scscf.ims.svc.cluster.local
+              
+              # Copier les configurations spécifiques
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
+              
+              # Remplacer les variables dans la configuration
+              sed -i "s/ICSCF_IP/$ICSCF_IP/g" /usr/local/etc/kamailio/kamailio_icscf.cfg
+              sed -i "s/LISTEN_IP/$LISTEN_IP/g" /usr/local/etc/kamailio/kamailio_icscf.cfg
+              sed -i "s/NETWORK_IP/$NETWORK_IP/g" /usr/local/etc/kamailio/kamailio_icscf.cfg
+              sed -i "s/MYSQL_IP/$MYSQL_IP/g" /usr/local/etc/kamailio/kamailio_icscf.cfg
+              
+              # Démarrer avec la configuration ICSCF spécifique
+              kamailio -f /usr/local/etc/kamailio/kamailio_icscf.cfg -P /tmp/kamailio.pid -DD -E -e
+          env:
+            - name: COMPONENT_NAME
+              value: icscf
+          volumeMounts:
+            - name: icscf-config
+              mountPath: /etc/kamailio-config
+          ports:
+            - containerPort: 5060
+              protocol: UDP
+            - containerPort: 5060
+              protocol: TCP
+      volumes:
+        - name: icscf-config
+          configMap:
+            name: icscf-config
+      restartPolicy: Always
+---
+# SCSCF Deployment corrigé
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scscf
+  labels:
+    io.kompose.service: scscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: scscf
+  template:
+    metadata:
+      labels:
+        io.kompose.service: scscf
+    spec:
+      containers:
+        - name: scscf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting SCSCF with specific configuration..."
+              # Définir les variables d'environnement nécessaires
+              export SCSCF_IP=$(hostname -i)
+              export LISTEN_IP=$SCSCF_IP
+              export NETWORK_IP=$SCSCF_IP
+              export SCSCF_PORT=5060
+              export HSS_IP=hss.ims.svc.cluster.local
+              export MYSQL_IP=mysql.ims.svc.cluster.local
+              export ICSCF_IP=icscf.ims.svc.cluster.local
+              
+              # Copier les configurations spécifiques
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
+              
+              # Remplacer les variables dans la configuration
+              sed -i "s/SCSCF_IP/$SCSCF_IP/g" /usr/local/etc/kamailio/kamailio_scscf.cfg
+              sed -i "s/LISTEN_IP/$LISTEN_IP/g" /usr/local/etc/kamailio/kamailio_scscf.cfg
+              sed -i "s/NETWORK_IP/$NETWORK_IP/g" /usr/local/etc/kamailio/kamailio_scscf.cfg
+              sed -i "s/MYSQL_IP/$MYSQL_IP/g" /usr/local/etc/kamailio/kamailio_scscf.cfg
+              
+              # Démarrer avec la configuration SCSCF spécifique
+              kamailio -f /usr/local/etc/kamailio/kamailio_scscf.cfg -P /tmp/kamailio.pid -DD -E -e
+          env:
+            - name: COMPONENT_NAME
+              value: scscf
+          volumeMounts:
+            - name: scscf-config
+              mountPath: /etc/kamailio-config
+          ports:
+            - containerPort: 5060
+              protocol: UDP
+            - containerPort: 5060
+              protocol: TCP
+      volumes:
+        - name: scscf-config
+          configMap:
+            name: scscf-config
+      restartPolicy: Always
