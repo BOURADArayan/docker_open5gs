@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f ../ims-diameter-deploy.yaml --out .
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: diameter
+  name: diameter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: diameter
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f ../ims-diameter-deploy.yaml --out .
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: diameter
+    spec:
+      containers:
+        - args:
+            - sleep
+            - infinity
+          env:
+            - name: COMPONENT_NAME
+              value: diameter
+            - name: HSS_DIAMETER_PORT
+              value: "3868"
+            - name: HSS_HOSTNAME
+              value: hss.ims.svc.cluster.local
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_pyhss:latest
+          name: diameter
+          volumeMounts:
+            - mountPath: /var/log/pyhss
+              name: diameter-logs
+            - mountPath: /etc/pyhss
+              name: diameter-config
+      restartPolicy: Always
+      volumes:
+        - name: diameter-logs
+          persistentVolumeClaim:
+            claimName: diameter-logs
+        - name: diameter-config
+          persistentVolumeClaim:
+            claimName: diameter-config

@@ -1,0 +1,95 @@
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_DATABASE: open5gs
+      MYSQL_USER: open5gs
+      MYSQL_PASSWORD: open5gs
+      MYSQL_ROOT_PASSWORD: linux
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - ims-network
+
+  hss:
+    image: docker_open5gs
+    container_name: hss
+    environment:
+      - COMPONENT_NAME=hss
+      - DB_URI=mongodb://mongo:27017/open5gs
+    volumes:
+      - hss_logs:/var/log/open5gs
+      - hss_config:/etc/open5gs
+    command: ["sleep", "infinity"]
+    depends_on:
+      - mysql
+    networks:
+      - ims-network
+
+  pcscf:
+    image: docker_kamailio
+    container_name: pcscf
+    environment:
+      - COMPONENT_NAME=pcscf
+    volumes:
+      - pcscf_logs:/var/log/kamailio
+    command: ["sleep", "infinity"]
+    networks:
+      - ims-network
+
+  icscf:
+    image: docker_kamailio
+    container_name: icscf
+    environment:
+      - COMPONENT_NAME=icscf
+    volumes:
+      - icscf_logs:/var/log/kamailio
+    command: ["sleep", "infinity"]
+    depends_on:
+      - hss
+    networks:
+      - ims-network
+
+  scscf:
+    image: docker_kamailio
+    container_name: scscf
+    environment:
+      - COMPONENT_NAME=scscf
+    volumes:
+      - scscf_logs:/var/log/kamailio
+    command: ["sleep", "infinity"]
+    depends_on:
+      - hss
+    networks:
+      - ims-network
+
+  diameter:
+    image: docker_pyhss
+    container_name: diameter
+    environment:
+      - COMPONENT_NAME=diameter
+      - HSS_HOSTNAME=hss.ims.svc.cluster.local
+      - HSS_DIAMETER_PORT=3868
+    volumes:
+      - diameter_logs:/var/log/pyhss
+      - diameter_config:/etc/pyhss
+    command: ["sleep", "infinity"]
+    depends_on:
+      - hss
+      - mysql
+    networks:
+      - ims-network
+
+volumes:
+  db_data:
+  hss_logs:
+  hss_config:
+  pcscf_logs:
+  icscf_logs:
+  scscf_logs:
+  diameter_logs:
+  diameter_config:
+networks:
+  ims-network:

@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f ../ims-diameter-deploy.yaml --out .
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: hss
+  name: hss
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hss
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f ../ims-diameter-deploy.yaml --out .
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: hss
+    spec:
+      containers:
+        - args:
+            - sleep
+            - infinity
+          env:
+            - name: COMPONENT_NAME
+              value: hss
+            - name: DB_URI
+              value: mongodb://mongo:27017/open5gs
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_open5gs:latest
+          name: hss
+          volumeMounts:
+            - mountPath: /var/log/open5gs
+              name: hss-logs
+            - mountPath: /etc/open5gs
+              name: hss-config
+      restartPolicy: Always
+      volumes:
+        - name: hss-logs
+          persistentVolumeClaim:
+            claimName: hss-logs
+        - name: hss-config
+          persistentVolumeClaim:
+            claimName: hss-config

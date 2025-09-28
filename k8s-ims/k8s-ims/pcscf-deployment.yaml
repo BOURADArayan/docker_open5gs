@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f ../ims-diameter-deploy.yaml --out .
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: pcscf
+  name: pcscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: pcscf
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f ../ims-diameter-deploy.yaml --out .
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: pcscf
+    spec:
+      containers:
+        - args:
+            - sleep
+            - infinity
+          env:
+            - name: COMPONENT_NAME
+              value: pcscf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          name: pcscf
+          volumeMounts:
+            - mountPath: /var/log/kamailio
+              name: pcscf-logs
+      restartPolicy: Always
+      volumes:
+        - name: pcscf-logs
+          persistentVolumeClaim:
+            claimName: pcscf-logs
