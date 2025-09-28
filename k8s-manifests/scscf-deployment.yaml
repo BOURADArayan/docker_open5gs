@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f ../ims-only-deploy.yaml --out .
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: scscf
+  name: scscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: scscf
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f ../ims-only-deploy.yaml --out .
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: scscf
+    spec:
+      containers:
+        - env:
+            - name: COMPONENT_NAME
+              value: scscf
+          envFrom:
+            - configMapRef:
+                name: env
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          name: scscf
+          volumeMounts:
+            - mountPath: /mnt/scscf
+              name: scscf-claim0
+      restartPolicy: Always
+      volumes:
+        - name: scscf-claim0
+          persistentVolumeClaim:
+            claimName: scscf-claim0

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f ../ims-only-deploy.yaml --out .
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: hss
+  name: hss
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hss
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f ../ims-only-deploy.yaml --out .
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: hss
+    spec:
+      containers:
+        - env:
+            - name: COMPONENT_NAME
+              value: hss
+          envFrom:
+            - configMapRef:
+                name: env
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          name: hss
+          volumeMounts:
+            - mountPath: /mnt/hss
+              name: hss-claim0
+      restartPolicy: Always
+      volumes:
+        - name: hss-claim0
+          persistentVolumeClaim:
+            claimName: hss-claim0

@@ -1,0 +1,76 @@
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    env_file:
+      - .env
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-kamailio}
+      MYSQL_USER: ${MYSQL_USER:-kamailio}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-kamailiorw}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-linux}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./ims_base/kamailio_base/mysql-init:/docker-entrypoint-initdb.d:Z
+    networks:
+      - ims-network
+
+  hss:
+    image: docker_kamailio
+    container_name: hss
+    env_file:
+      - .env
+    volumes:
+      - ./ims_base/hss:/mnt/hss:Z
+    environment:
+      - COMPONENT_NAME=hss
+    depends_on:
+      - mysql
+    networks:
+      - ims-network
+
+  pcscf:
+    image: docker_kamailio
+    container_name: pcscf
+    env_file:
+      - .env
+    volumes:
+      - ./ims_base/pcscf:/mnt/pcscf:Z
+    environment:
+      - COMPONENT_NAME=pcscf
+    networks:
+      - ims-network
+
+  icscf:
+    image: docker_kamailio
+    container_name: icscf
+    env_file:
+      - .env
+    volumes:
+      - ./ims_base/icscf:/mnt/icscf:Z
+    environment:
+      - COMPONENT_NAME=icscf
+    depends_on:
+      - hss
+    networks:
+      - ims-network
+
+  scscf:
+    image: docker_kamailio
+    container_name: scscf
+    env_file:
+      - .env
+    volumes:
+      - ./ims_base/scscf:/mnt/scscf:Z
+    environment:
+      - COMPONENT_NAME=scscf
+    depends_on:
+      - hss
+    networks:
+      - ims-network
+
+volumes:
+  db_data:
+networks:
+  ims-network:

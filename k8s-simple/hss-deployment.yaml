@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hss
+  labels:
+    app: hss
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hss
+  template:
+    metadata:
+      labels:
+        app: hss
+    spec:
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+      containers:
+      - name: hss
+        image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_hss:latest
+        command: ["/open5gs/install/bin/open5gs-hssd"]
+        args: ["-c", "/etc/open5gs/hss.yaml"]
+        ports:
+        - containerPort: 3868
+          name: diameter
+        - containerPort: 5060
+          name: sip
+        volumeMounts:
+        - name: hss-config-volume
+          mountPath: /etc/open5gs/hss.yaml
+          subPath: hss.yaml
+        - name: hss-log
+          mountPath: /open5gs/install/var/log/open5gs
+      restartPolicy: Always
+      volumes:
+      - name: hss-config-volume
+        configMap:
+          name: hss-config
+      - name: hss-log
+        emptyDir: {}

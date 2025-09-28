@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f ../ims-only-deploy.yaml --out .
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: pcscf
+  name: pcscf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: pcscf
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f ../ims-only-deploy.yaml --out .
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: pcscf
+    spec:
+      containers:
+        - env:
+            - name: COMPONENT_NAME
+              value: pcscf
+          envFrom:
+            - configMapRef:
+                name: env
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
+          name: pcscf
+          volumeMounts:
+            - mountPath: /mnt/pcscf
+              name: pcscf-claim0
+      restartPolicy: Always
+      volumes:
+        - name: pcscf-claim0
+          persistentVolumeClaim:
+            claimName: pcscf-claim0

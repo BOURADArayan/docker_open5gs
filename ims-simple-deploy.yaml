@@ -1,0 +1,61 @@
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_DATABASE: kamailio
+      MYSQL_USER: kamailio
+      MYSQL_PASSWORD: kamailiorw
+      MYSQL_ROOT_PASSWORD: linux
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - ims-network
+
+  hss:
+    image: docker_kamailio
+    container_name: hss
+    environment:
+      - COMPONENT_NAME=hss
+    command: ["sleep", "infinity"]
+    depends_on:
+      - mysql
+    networks:
+      - ims-network
+
+  pcscf:
+    image: docker_kamailio
+    container_name: pcscf
+    environment:
+      - COMPONENT_NAME=pcscf
+    command: ["sleep", "infinity"]
+    networks:
+      - ims-network
+
+  icscf:
+    image: docker_kamailio
+    container_name: icscf
+    environment:
+      - COMPONENT_NAME=icscf
+    command: ["sleep", "infinity"]
+    depends_on:
+      - hss
+    networks:
+      - ims-network
+
+  scscf:
+    image: docker_kamailio
+    container_name: scscf
+    environment:
+      - COMPONENT_NAME=scscf
+    command: ["sleep", "infinity"]
+    depends_on:
+      - hss
+    networks:
+      - ims-network
+
+volumes:
+  db_data:
+networks:
+  ims-network:
