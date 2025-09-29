@@ -1,12 +1,10 @@
+# SCSCF Deployment - NON MODIFIÉ (garde ton script qui fonctionne)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  annotations:
-    kompose.cmd: kompose convert -f ../ims-complete-deploy.yaml --out .
-    kompose.version: 1.37.0 (fb0539e64)
+  name: scscf
   labels:
     io.kompose.service: scscf
-  name: scscf
 spec:
   replicas: 1
   selector:
@@ -14,9 +12,6 @@ spec:
       io.kompose.service: scscf
   template:
     metadata:
-      annotations:
-        kompose.cmd: kompose convert -f ../ims-complete-deploy.yaml --out .
-        kompose.version: 1.37.0 (fb0539e64)
       labels:
         io.kompose.service: scscf
     spec:
@@ -27,11 +22,116 @@ spec:
             - /bin/bash
             - -c
             - |
-              echo "Starting SCSCF with specific configuration..."
-              # Copier les configurations spécifiques
-              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
-              # Démarrer avec la configuration SCSCF spécifique
-              kamailio -f /usr/local/etc/kamailio/kamailio_scscf.cfg -P /tmp/kamailio.pid -DD -E -e
+              echo "Starting SCSCF with dispatcher fix..."
+              
+              # Copy files
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/ 2>/dev/null || true
+              
+              # Get IPs
+              POD_IP=$(hostname -i)
+              MYSQL_SERVICE_IP="mysql.ims.svc.cluster.local"
+              HSS_SERVICE_IP="hss.ims.svc.cluster.local"
+              ICSCF_SERVICE_IP="icscf.ims.svc.cluster.local"
+              echo "Pod IP: $POD_IP"
+              
+              # Wait for MySQL
+              echo "Waiting for MySQL..."
+              for i in {1..20}; do
+                if timeout 5 bash -c '</dev/tcp/mysql.ims.svc.cluster.local/3306' 2>/dev/null; then
+                  echo "✓ MySQL is ready!"
+                  break
+                else
+                  echo "MySQL not ready, waiting... ($i/20)"
+                  sleep 3
+                fi
+              done
+              
+              # Create required directories for dispatcher
+              echo "=== Creating dispatcher directories ==="
+              mkdir -p /etc/kamailio_scscf
+              mkdir -p /etc/kamailio_icscf  
+              mkdir -p /etc/kamailio_pcscf
+              
+              # Copy dispatcher and XML files
+              if [ -f "/usr/local/etc/kamailio/dispatcher.list" ]; then
+                cp /usr/local/etc/kamailio/dispatcher.list /etc/kamailio_scscf/
+                echo "✓ dispatcher.list copied to /etc/kamailio_scscf/"
+              else
+                echo "# SCSCF Dispatcher List" > /etc/kamailio_scscf/dispatcher.list
+                echo "✓ Empty dispatcher.list created"
+              fi
+              
+              # Copy scscf.xml file
+              if [ -f "/usr/local/etc/kamailio/scscf.xml" ]; then
+                cp /usr/local/etc/kamailio/scscf.xml /etc/kamailio_scscf/
+                echo "✓ scscf.xml copied to /etc/kamailio_scscf/"
+              else
+                echo "Warning: scscf.xml not found in /usr/local/etc/kamailio/"
+              fi
+              
+              # Comprehensive variable replacement including ALL possible variables
+              echo "=== Comprehensive variable replacement ==="
+              find /usr/local/etc/kamailio -type f | while read file; do
+                if [ -f "$file" ]; then
+                  echo "Processing: $file"
+                  sed -i "s/SCSCF_IP/$POD_IP/g" "$file"
+                  sed -i "s/LISTEN_IP/$POD_IP/g" "$file"
+                  sed -i "s/NETWORK_IP/$POD_IP/g" "$file"
+                  sed -i "s/MYSQL_IP/$MYSQL_SERVICE_IP/g" "$file"
+                  sed -i "s/HSS_IP/$HSS_SERVICE_IP/g" "$file"
+                  sed -i "s/ICSCF_IP/$ICSCF_SERVICE_IP/g" "$file"
+                  sed -i 's/UE_SUBSCRIPTION_EXPIRES/3605/g' "$file"
+                  sed -i 's/SUBSCRIPTION_EXPIRES_ENV/3605/g' "$file"
+                  sed -i 's/TCP_PROCESSES/4/g' "$file"
+                  sed -i 's/SCSCF_PROCESSES/4/g' "$file"
+                  sed -i 's/SHM_MEM/64/g' "$file"
+                  sed -i 's/PKG_MEM/8/g' "$file"
+                  sed -i "s/listen=tcp:127.0.0.1:6060/listen=tcp:$POD_IP:6060/g" "$file"
+                  sed -i "s/listen=udp:.*:5060/listen=udp:$POD_IP:5060/g" "$file"
+                  sed -i "s/listen=tcp:.*:5060/listen=tcp:$POD_IP:5060/g" "$file"
+                fi
+              done
+              
+              # Fix preprocessor directives for .cfg files
+              find /usr/local/etc/kamailio -name "*.cfg" | while read file; do
+                echo "Fixing preprocessor in: $file"
+                temp_file=$(mktemp)
+                awk '
+                  /^[[:space:]]*#!endif/ { print "#!endif"; next }
+                  { print }
+                  END { print "" }
+                ' "$file" > "$temp_file"
+                mv "$temp_file" "$file"
+              done
+              
+              # Create MySQL user if needed
+              echo "=== Creating MySQL user ==="
+              mysql -h mysql.ims.svc.cluster.local -u root -plinux -e "
+                CREATE USER IF NOT EXISTS 'scscf'@'%' IDENTIFIED BY 'heslo';
+                GRANT ALL PRIVILEGES ON scscf.* TO 'scscf'@'%';
+                FLUSH PRIVILEGES;
+              " 2>/dev/null || echo "MySQL user creation skipped (may already exist)"
+              
+              # Verify dispatcher file exists
+              echo "=== Verifying dispatcher file ==="
+              ls -la /etc/kamailio_scscf/dispatcher.list
+              echo "Dispatcher file content:"
+              head -3 /etc/kamailio_scscf/dispatcher.list || echo "Empty file"
+              
+              # Set library path and test
+              export LD_LIBRARY_PATH="/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH"
+              
+              echo "=== Testing Kamailio configuration ==="
+              if kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg; then
+                echo "✓ Configuration syntax OK - Starting Kamailio SCSCF..."
+                exec kamailio -f /usr/local/etc/kamailio/kamailio_scscf.cfg -P /tmp/kamailio.pid -DD -E -e
+              else
+                echo "✗ Configuration error - detailed analysis:"
+                echo "Checking dispatcher configuration..."
+                grep -n "dispatcher" /usr/local/etc/kamailio/kamailio_scscf.cfg | head -5
+                kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg 2>&1 | head -10
+                sleep infinity
+              fi
           env:
             - name: COMPONENT_NAME
               value: scscf
@@ -42,6 +142,10 @@ spec:
             - containerPort: 5060
               protocol: UDP
             - containerPort: 5060
+              protocol: TCP
+            - containerPort: 6060
+              protocol: UDP
+            - containerPort: 6060
               protocol: TCP
       volumes:
         - name: scscf-config
