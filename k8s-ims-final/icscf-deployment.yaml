@@ -1,4 +1,3 @@
-# Fixed ICSCF Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,7 +21,7 @@ spec:
             - /bin/bash
             - -c
             - |
-              echo "Starting ICSCF with corrected configuration..."
+              echo "Starting ICSCF with complete Diameter configuration..."
               
               # Copy files
               cp /etc/kamailio-config/* /usr/local/etc/kamailio/ 2>/dev/null || true
@@ -33,28 +32,31 @@ spec:
               HSS_SERVICE_IP="hss.ims.svc.cluster.local"
               echo "Pod IP: $POD_IP"
               
-              # Create required directories for ICSCF
-              echo "=== Creating ICSCF directories ==="
-              mkdir -p /etc/kamailio_icscf
+              # Get HSS service IP and add to /etc/hosts (comme SCSCF)
+              echo "=== Resolving HSS Service IP ==="
+              HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
+              if [ -z "$HSS_IP" ]; then
+                echo "Waiting for HSS service..."
+                for i in {1..30}; do
+                  HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
+                  if [ -n "$HSS_IP" ]; then
+                    break
+                  fi
+                  sleep 2
+                done
+              fi
               
-              # Create icscf.xml file (missing file causing error)
-              echo "=== Creating icscf.xml for ICSCF ==="
-              cat > /etc/kamailio_icscf/icscf.xml << 'EOF'
-              <?xml version="1.0" encoding="UTF-8"?>
-              <DiameterPeer FQDN="icscf.ims" Realm="ims" VendorId="0" ProductName="ICSCF" FirmwareRevision="1">
-                  <Peer FQDN="hss.ims" Realm="ims" Port="3868"/>
-                  <Acceptor Port="3868"/>
-                  <SupportedVendor VendorId="0" AuthApplicationId="16777216"/>
-                  <Auth>
-                      <SessionTimer>60</SessionTimer>
-                      <SessionGraceTimer>60</SessionGraceTimer>
-                  </Auth>
-              </DiameterPeer>
-              EOF
-              echo "✓ icscf.xml created for ICSCF"
+              echo "HSS Service IP: $HSS_IP"
               
-              # Wait for MySQL and create ICSCF user
-              echo "=== Waiting for MySQL and creating ICSCF user ==="
+              # Add HSS to /etc/hosts (comme SCSCF)
+              if [ -n "$HSS_IP" ]; then
+                sed -i '/hss.localdomain/d' /etc/hosts
+                echo "$HSS_IP hss.localdomain hss" >> /etc/hosts
+                echo "✓ Added hss.localdomain -> $HSS_IP to /etc/hosts"
+              fi
+              
+              # Wait for MySQL
+              echo "=== Waiting for MySQL ==="
               for i in {1..20}; do
                 if timeout 5 bash -c '</dev/tcp/mysql.ims.svc.cluster.local/3306' 2>/dev/null; then
                   echo "✓ MySQL is ready!"
@@ -64,6 +66,61 @@ spec:
                   sleep 3
                 fi
               done
+              
+              # Wait for HSS Diameter port (comme SCSCF)
+              echo "Waiting for HSS Diameter port..."
+              for i in {1..20}; do
+                if timeout 5 bash -c '</dev/tcp/hss.ims.svc.cluster.local/3868' 2>/dev/null; then
+                  echo "✓ HSS Diameter port is ready!"
+                  break
+                fi
+                sleep 3
+              done
+              
+              # Create required directories for ICSCF
+              echo "=== Creating ICSCF directories ==="
+              mkdir -p /etc/kamailio_icscf
+              
+              # Create icscf.xml with proper Diameter configuration (comme SCSCF)
+              echo "=== Creating icscf.xml with Pod IP and HSS peer ==="
+              cat > /etc/kamailio_icscf/icscf.xml << XMLEOF
+              <?xml version="1.0" encoding="UTF-8"?>
+              <DiameterPeer
+                      FQDN="icscf.localdomain"
+                      Realm="localdomain"
+                      Vendor_Id="10415"
+                      Product_Name="CDiameterPeer"
+                      AcceptUnknownPeers="1"
+                      DropUnknownOnDisconnect="1"
+                      Tc="30"
+                      Workers="4"
+                      QueueLength="32"
+                      TransactionTimeout="10"
+                      SessionsHashSize="128"
+                      DefaultAuthSessionTimeout="3600"
+                      MaxAuthSessionTimeout="3600"
+              >
+                      <Peer FQDN="hss.localdomain" Realm="localdomain" port="3868"/>
+
+                      <Acceptor port="3869" bind="$POD_IP"/>
+                      <Acceptor port="3869" bind="0.0.0.0"/>
+
+                      <Auth id="16777216" vendor="10415"/>
+                      <Auth id="16777216" vendor="4491"/>
+                      <Auth id="16777216" vendor="13019"/>
+                      <Auth id="16777216" vendor="0"/>
+
+                      <Auth id="4" vendor="10415"/>
+                      <Acct id="4" vendor="10415"/>
+
+                      <SupportedVendor vendor="10415"/>
+
+                      <DefaultRoute FQDN="hss.localdomain" metric="10"/>
+              </DiameterPeer>
+              XMLEOF
+
+              echo "✓ icscf.xml created with POD_IP=$POD_IP on Diameter port 3869"
+              cat /etc/kamailio_icscf/icscf.xml | grep -E "bind|FQDN|Realm|Peer"
               
               # Create MySQL user for ICSCF
               mysql -h mysql.ims.svc.cluster.local -u root -plinux -e "
@@ -130,6 +187,14 @@ spec:
               total_endif=$(find /usr/local/etc/kamailio -name "*.cfg" -exec grep -h "^[[:space:]]*#!endif" {} \; | wc -l)
               echo "Final count - ifdef/ifndef: $total_ifdef, endif: $total_endif"
               
+              # Verify Diameter connectivity (comme SCSCF)
+              echo "=== Verification DNS et Connectivité ==="
+              echo "DNS resolution test:"
+              getent hosts hss.localdomain
+              echo ""
+              echo "Connectivity test to HSS:"
+              timeout 3 bash -c '</dev/tcp/hss.localdomain/3868' && echo "✓ Can connect to HSS Diameter" || echo "✗ Cannot connect to HSS Diameter"
+              
               # Set library path
               export LD_LIBRARY_PATH="/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH"
               
@@ -156,6 +221,23 @@ spec:
               protocol: TCP
             - containerPort: 4060
               protocol: TCP
+            - containerPort: 4060
+              protocol: UDP
+            - containerPort: 3869
+              protocol: TCP
+              name: diameter
+          livenessProbe:
+            exec:
+              command:
+                - pgrep
+                - kamailio
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 3869
+            initialDelaySeconds: 20
+            periodSeconds: 5
       volumes:
         - name: icscf-config
           configMap:

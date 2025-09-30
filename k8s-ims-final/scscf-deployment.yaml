@@ -14,11 +14,6 @@ spec:
       labels:
         io.kompose.service: scscf
     spec:
-      # Add hostAliases to map hss.localdomain to the service IP
-      hostAliases:
-        - ip: "127.0.0.1"  # Placeholder, will be updated by init script
-          hostnames:
-            - "hss.localdomain"
       containers:
         - name: scscf
           image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
@@ -26,13 +21,13 @@ spec:
             - /bin/bash
             - -c
             - |
-              echo "Starting SCSCF with DNS resolution fix..."
+              echo "Starting SCSCF with complete Diameter configuration..."
               
               # Get HSS service IP and add to /etc/hosts
               echo "=== Resolving HSS Service IP ==="
               HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
               if [ -z "$HSS_IP" ]; then
-                echo "Waiting for HSS service to be available..."
+                echo "Waiting for HSS service..."
                 for i in {1..30}; do
                   HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
                   if [ -n "$HSS_IP" ]; then
@@ -44,16 +39,11 @@ spec:
               
               echo "HSS Service IP: $HSS_IP"
               
-              # Add HSS to /etc/hosts so CDP can resolve hss.localdomain
+              # Add HSS to /etc/hosts
               if [ -n "$HSS_IP" ]; then
-                # Remove existing entry if any
                 sed -i '/hss.localdomain/d' /etc/hosts
-                # Add new entry
                 echo "$HSS_IP hss.localdomain hss" >> /etc/hosts
                 echo "✓ Added hss.localdomain -> $HSS_IP to /etc/hosts"
-                cat /etc/hosts | grep hss
-              else
-                echo "✗ Failed to resolve HSS IP, using service name fallback"
               fi
               
               # Copy config files
@@ -72,42 +62,57 @@ spec:
                 if timeout 5 bash -c '</dev/tcp/mysql.ims.svc.cluster.local/3306' 2>/dev/null; then
                   echo "✓ MySQL is ready!"
                   break
-                else
-                  echo "MySQL not ready, waiting... ($i/20)"
-                  sleep 3
                 fi
+                sleep 3
               done
 
-              # Wait for HSS Diameter port
+              # Wait for HSS
               echo "Waiting for HSS Diameter port..."
               for i in {1..20}; do
                 if timeout 5 bash -c '</dev/tcp/hss.ims.svc.cluster.local/3868' 2>/dev/null; then
                   echo "✓ HSS Diameter port is ready!"
                   break
-                else
-                  echo "HSS Diameter not ready, waiting... ($i/20)"
-                  sleep 3
                 fi
+                sleep 3
               done
               
               # Create directories
-              echo "=== Creating directories ==="
               mkdir -p /etc/kamailio_scscf
               mkdir -p /etc/kamailio_icscf  
               mkdir -p /etc/kamailio_pcscf
               
+              # Copy XSD files if they exist
+              echo "=== Copying XSD files ==="
+              if [ -f "/usr/local/etc/kamailio/CxDataType_Rel7.xsd" ]; then
+                cp /usr/local/etc/kamailio/*.xsd /etc/kamailio_scscf/ 2>/dev/null
+                echo "✓ XSD files copied from /usr/local/etc/kamailio"
+              elif [ -f "/etc/kamailio-config/CxDataType_Rel7.xsd" ]; then
+                cp /etc/kamailio-config/*.xsd /etc/kamailio_scscf/ 2>/dev/null
+                echo "✓ XSD files copied from /etc/kamailio-config"
+              else
+                echo "⚠ XSD files not found, creating minimal placeholder"
+                cat > /etc/kamailio_scscf/CxDataType_Rel7.xsd << 'XSDEOF'
+              <?xml version="1.0" encoding="UTF-8"?>
+              <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" 
+                         targetNamespace="http://www.3gpp.org/ftp/Specs/archive/29_series/29.229#CxDataType_Rel7"
+                         xmlns="http://www.3gpp.org/ftp/Specs/archive/29_series/29.229#CxDataType_Rel7"
+                         elementFormDefault="qualified">
+                  <xs:element name="IMSSubscription" type="xs:string"/>
+              </xs:schema>
+              XSDEOF
+                echo "✓ Placeholder XSD created"
+              fi
+              
               # Create dispatcher.list
               if [ -f "/usr/local/etc/kamailio/dispatcher.list" ]; then
                 cp /usr/local/etc/kamailio/dispatcher.list /etc/kamailio_scscf/
-                echo "✓ dispatcher.list copied"
               else
                 echo "# SCSCF Dispatcher List" > /etc/kamailio_scscf/dispatcher.list
-                echo "✓ Empty dispatcher.list created"
               fi
               
-              # Create scscf.xml with proper configuration
-              echo "=== Creating scscf.xml ==="
-              cat > /etc/kamailio_scscf/scscf.xml << 'XMLEOF'
+              # Create scscf.xml with proper configuration and local address
+              echo "=== Creating scscf.xml with Pod IP ==="
+              cat > /etc/kamailio_scscf/scscf.xml << XMLEOF
               <?xml version="1.0" encoding="UTF-8"?>
               <DiameterPeer
                       FQDN="scscf.localdomain"
@@ -117,23 +122,24 @@ spec:
                       AcceptUnknownPeers="1"
                       DropUnknownOnDisconnect="1"
                       Tc="30"
-                      Workers="16"
+                      Workers="4"
                       QueueLength="32"
-                      TransactionTimeout="5"
+                      TransactionTimeout="10"
                       SessionsHashSize="128"
                       DefaultAuthSessionTimeout="3600"
                       MaxAuthSessionTimeout="3600"
               >
                       <Peer FQDN="hss.localdomain" Realm="localdomain" port="3868"/>
 
+                      <Acceptor port="6060" bind="$POD_IP"/>
                       <Acceptor port="6060" bind="0.0.0.0"/>
 
-                      <Auth id="16777216" vendor="10415"/><!-- 3GPP Cx -->
-                      <Auth id="16777216" vendor="4491"/><!-- CableLabs Cx -->
-                      <Auth id="16777216" vendor="13019"/><!-- ETSI/TISPAN Cx -->
-                      <Auth id="16777216" vendor="0"/><!-- ETSI/TISPAN Cx -->
+                      <Auth id="16777216" vendor="10415"/>
+                      <Auth id="16777216" vendor="4491"/>
+                      <Auth id="16777216" vendor="13019"/>
+                      <Auth id="16777216" vendor="0"/>
 
-                      <Auth id="4" vendor="10415"/> <!--3GPP Ro -->
+                      <Auth id="4" vendor="10415"/>
                       <Acct id="4" vendor="10415"/>
 
                       <SupportedVendor vendor="10415"/>
@@ -142,9 +148,10 @@ spec:
               </DiameterPeer>
               XMLEOF
 
-              echo "✓ scscf.xml created"
+              echo "✓ scscf.xml created with POD_IP=$POD_IP"
+              cat /etc/kamailio_scscf/scscf.xml | grep -E "bind|FQDN|Realm"
               
-              # Variable replacement in all Kamailio files
+              # Variable replacement
               echo "=== Processing configuration files ==="
               find /usr/local/etc/kamailio -type f | while read file; do
                 if [ -f "$file" ]; then
@@ -179,32 +186,35 @@ spec:
               done
               
               # Create MySQL user
-              echo "=== Creating MySQL user ==="
               mysql -h mysql.ims.svc.cluster.local -u root -plinux -e "
                 CREATE USER IF NOT EXISTS 'scscf'@'%' IDENTIFIED BY 'heslo';
                 GRANT ALL PRIVILEGES ON scscf.* TO 'scscf'@'%';
                 FLUSH PRIVILEGES;
-              " 2>/dev/null || echo "MySQL user exists"
+              " 2>/dev/null || true
               
-              # Test DNS resolution
-              echo "=== Testing DNS resolution ==="
-              echo "Resolving hss.localdomain:"
+              # Verify setup
+              echo "=== Verification ==="
+              echo "Files in /etc/kamailio_scscf:"
+              ls -la /etc/kamailio_scscf/
+              echo ""
+              echo "DNS resolution test:"
               getent hosts hss.localdomain
-              echo "Resolving hss.ims.svc.cluster.local:"
-              getent hosts hss.ims.svc.cluster.local
+              echo ""
+              echo "Connectivity test:"
+              timeout 3 bash -c '</dev/tcp/hss.localdomain/3868' && echo "✓ Can connect to HSS" || echo "✗ Cannot connect to HSS"
               
               # Set library path
               export LD_LIBRARY_PATH="/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH"
               
               # Test configuration
               echo "=== Testing Kamailio configuration ==="
-              if kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg; then
+              if kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg 2>&1 | tee /tmp/kamailio-test.log; then
                 echo "✓ Configuration OK"
                 echo "=== Starting Kamailio SCSCF ==="
                 exec kamailio -f /usr/local/etc/kamailio/kamailio_scscf.cfg -P /tmp/kamailio.pid -DD -E -e
               else
                 echo "✗ Configuration error:"
-                kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg 2>&1 | head -20
+                cat /tmp/kamailio-test.log
                 sleep infinity
               fi
           env:

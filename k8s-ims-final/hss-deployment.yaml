@@ -43,7 +43,7 @@ spec:
               echo "" >> /open5gs/install/etc/freeDiameter/hss.conf
               echo "# IMS Diameter Peers Configuration" >> /open5gs/install/etc/freeDiameter/hss.conf
               echo 'ConnectPeer = "scscf.localdomain" { ConnectTo = "scscf.ims.svc.cluster.local"; No_TLS; Port=6060; };' >> /open5gs/install/etc/freeDiameter/hss.conf
-              echo 'ConnectPeer = "icscf.localdomain" { ConnectTo = "icscf.ims.svc.cluster.local"; No_TLS; Port=3868; };' >> /open5gs/install/etc/freeDiameter/hss.conf
+              echo 'ConnectPeer = "icscf.localdomain" { ConnectTo = "icscf.ims.svc.cluster.local"; No_TLS; Port=3869; };' >> /open5gs/install/etc/freeDiameter/hss.conf
               echo 'ConnectPeer = "pcscf.localdomain" { ConnectTo = "pcscf.ims.svc.cluster.local"; No_TLS; Port=3868; };' >> /open5gs/install/etc/freeDiameter/hss.conf
 
               echo "=== HSS freeDiameter configuration updated ==="
