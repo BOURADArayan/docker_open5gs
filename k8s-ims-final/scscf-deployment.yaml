@@ -1,4 +1,3 @@
-# SCSCF Deployment - NON MODIFIÉ (garde ton script qui fonctionne)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,6 +14,11 @@ spec:
       labels:
         io.kompose.service: scscf
     spec:
+      # Add hostAliases to map hss.localdomain to the service IP
+      hostAliases:
+        - ip: "127.0.0.1"  # Placeholder, will be updated by init script
+          hostnames:
+            - "hss.localdomain"
       containers:
         - name: scscf
           image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_kamailio:latest
@@ -22,9 +26,37 @@ spec:
             - /bin/bash
             - -c
             - |
-              echo "Starting SCSCF with dispatcher fix..."
+              echo "Starting SCSCF with DNS resolution fix..."
               
-              # Copy files
+              # Get HSS service IP and add to /etc/hosts
+              echo "=== Resolving HSS Service IP ==="
+              HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
+              if [ -z "$HSS_IP" ]; then
+                echo "Waiting for HSS service to be available..."
+                for i in {1..30}; do
+                  HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
+                  if [ -n "$HSS_IP" ]; then
+                    break
+                  fi
+                  sleep 2
+                done
+              fi
+              
+              echo "HSS Service IP: $HSS_IP"
+              
+              # Add HSS to /etc/hosts so CDP can resolve hss.localdomain
+              if [ -n "$HSS_IP" ]; then
+                # Remove existing entry if any
+                sed -i '/hss.localdomain/d' /etc/hosts
+                # Add new entry
+                echo "$HSS_IP hss.localdomain hss" >> /etc/hosts
+                echo "✓ Added hss.localdomain -> $HSS_IP to /etc/hosts"
+                cat /etc/hosts | grep hss
+              else
+                echo "✗ Failed to resolve HSS IP, using service name fallback"
+              fi
+              
+              # Copy config files
               cp /etc/kamailio-config/* /usr/local/etc/kamailio/ 2>/dev/null || true
               
               # Get IPs
@@ -45,41 +77,84 @@ spec:
                   sleep 3
                 fi
               done
+
+              # Wait for HSS Diameter port
+              echo "Waiting for HSS Diameter port..."
+              for i in {1..20}; do
+                if timeout 5 bash -c '</dev/tcp/hss.ims.svc.cluster.local/3868' 2>/dev/null; then
+                  echo "✓ HSS Diameter port is ready!"
+                  break
+                else
+                  echo "HSS Diameter not ready, waiting... ($i/20)"
+                  sleep 3
+                fi
+              done
               
-              # Create required directories for dispatcher
-              echo "=== Creating dispatcher directories ==="
+              # Create directories
+              echo "=== Creating directories ==="
               mkdir -p /etc/kamailio_scscf
               mkdir -p /etc/kamailio_icscf  
               mkdir -p /etc/kamailio_pcscf
               
-              # Copy dispatcher and XML files
+              # Create dispatcher.list
               if [ -f "/usr/local/etc/kamailio/dispatcher.list" ]; then
                 cp /usr/local/etc/kamailio/dispatcher.list /etc/kamailio_scscf/
-                echo "✓ dispatcher.list copied to /etc/kamailio_scscf/"
+                echo "✓ dispatcher.list copied"
               else
                 echo "# SCSCF Dispatcher List" > /etc/kamailio_scscf/dispatcher.list
                 echo "✓ Empty dispatcher.list created"
               fi
               
-              # Copy scscf.xml file
-              if [ -f "/usr/local/etc/kamailio/scscf.xml" ]; then
-                cp /usr/local/etc/kamailio/scscf.xml /etc/kamailio_scscf/
-                echo "✓ scscf.xml copied to /etc/kamailio_scscf/"
-              else
-                echo "Warning: scscf.xml not found in /usr/local/etc/kamailio/"
-              fi
+              # Create scscf.xml with proper configuration
+              echo "=== Creating scscf.xml ==="
+              cat > /etc/kamailio_scscf/scscf.xml << 'XMLEOF'
+              <?xml version="1.0" encoding="UTF-8"?>
+              <DiameterPeer
+                      FQDN="scscf.localdomain"
+                      Realm="localdomain"
+                      Vendor_Id="10415"
+                      Product_Name="CDiameterPeer"
+                      AcceptUnknownPeers="1"
+                      DropUnknownOnDisconnect="1"
+                      Tc="30"
+                      Workers="16"
+                      QueueLength="32"
+                      TransactionTimeout="5"
+                      SessionsHashSize="128"
+                      DefaultAuthSessionTimeout="3600"
+                      MaxAuthSessionTimeout="3600"
+              >
+                      <Peer FQDN="hss.localdomain" Realm="localdomain" port="3868"/>
+
+                      <Acceptor port="6060" bind="0.0.0.0"/>
+
+                      <Auth id="16777216" vendor="10415"/><!-- 3GPP Cx -->
+                      <Auth id="16777216" vendor="4491"/><!-- CableLabs Cx -->
+                      <Auth id="16777216" vendor="13019"/><!-- ETSI/TISPAN Cx -->
+                      <Auth id="16777216" vendor="0"/><!-- ETSI/TISPAN Cx -->
+
+                      <Auth id="4" vendor="10415"/> <!--3GPP Ro -->
+                      <Acct id="4" vendor="10415"/>
+
+                      <SupportedVendor vendor="10415"/>
+
+                      <DefaultRoute FQDN="hss.localdomain" metric="10"/>
+              </DiameterPeer>
+              XMLEOF
+
+              echo "✓ scscf.xml created"
               
-              # Comprehensive variable replacement including ALL possible variables
-              echo "=== Comprehensive variable replacement ==="
+              # Variable replacement in all Kamailio files
+              echo "=== Processing configuration files ==="
               find /usr/local/etc/kamailio -type f | while read file; do
                 if [ -f "$file" ]; then
-                  echo "Processing: $file"
                   sed -i "s/SCSCF_IP/$POD_IP/g" "$file"
                   sed -i "s/LISTEN_IP/$POD_IP/g" "$file"
                   sed -i "s/NETWORK_IP/$POD_IP/g" "$file"
                   sed -i "s/MYSQL_IP/$MYSQL_SERVICE_IP/g" "$file"
                   sed -i "s/HSS_IP/$HSS_SERVICE_IP/g" "$file"
                   sed -i "s/ICSCF_IP/$ICSCF_SERVICE_IP/g" "$file"
+                  sed -i "s/IMS_DOMAIN/localdomain/g" "$file"
                   sed -i 's/UE_SUBSCRIPTION_EXPIRES/3605/g' "$file"
                   sed -i 's/SUBSCRIPTION_EXPIRES_ENV/3605/g' "$file"
                   sed -i 's/TCP_PROCESSES/4/g' "$file"
@@ -92,9 +167,8 @@ spec:
                 fi
               done
               
-              # Fix preprocessor directives for .cfg files
+              # Fix preprocessor directives
               find /usr/local/etc/kamailio -name "*.cfg" | while read file; do
-                echo "Fixing preprocessor in: $file"
                 temp_file=$(mktemp)
                 awk '
                   /^[[:space:]]*#!endif/ { print "#!endif"; next }
@@ -104,32 +178,33 @@ spec:
                 mv "$temp_file" "$file"
               done
               
-              # Create MySQL user if needed
+              # Create MySQL user
               echo "=== Creating MySQL user ==="
               mysql -h mysql.ims.svc.cluster.local -u root -plinux -e "
                 CREATE USER IF NOT EXISTS 'scscf'@'%' IDENTIFIED BY 'heslo';
                 GRANT ALL PRIVILEGES ON scscf.* TO 'scscf'@'%';
                 FLUSH PRIVILEGES;
-              " 2>/dev/null || echo "MySQL user creation skipped (may already exist)"
+              " 2>/dev/null || echo "MySQL user exists"
               
-              # Verify dispatcher file exists
-              echo "=== Verifying dispatcher file ==="
-              ls -la /etc/kamailio_scscf/dispatcher.list
-              echo "Dispatcher file content:"
-              head -3 /etc/kamailio_scscf/dispatcher.list || echo "Empty file"
+              # Test DNS resolution
+              echo "=== Testing DNS resolution ==="
+              echo "Resolving hss.localdomain:"
+              getent hosts hss.localdomain
+              echo "Resolving hss.ims.svc.cluster.local:"
+              getent hosts hss.ims.svc.cluster.local
               
-              # Set library path and test
+              # Set library path
               export LD_LIBRARY_PATH="/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH"
               
+              # Test configuration
               echo "=== Testing Kamailio configuration ==="
               if kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg; then
-                echo "✓ Configuration syntax OK - Starting Kamailio SCSCF..."
+                echo "✓ Configuration OK"
+                echo "=== Starting Kamailio SCSCF ==="
                 exec kamailio -f /usr/local/etc/kamailio/kamailio_scscf.cfg -P /tmp/kamailio.pid -DD -E -e
               else
-                echo "✗ Configuration error - detailed analysis:"
-                echo "Checking dispatcher configuration..."
-                grep -n "dispatcher" /usr/local/etc/kamailio/kamailio_scscf.cfg | head -5
-                kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg 2>&1 | head -10
+                echo "✗ Configuration error:"
+                kamailio -c -f /usr/local/etc/kamailio/kamailio_scscf.cfg 2>&1 | head -20
                 sleep infinity
               fi
           env:
@@ -147,6 +222,18 @@ spec:
               protocol: UDP
             - containerPort: 6060
               protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - pgrep
+                - kamailio
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 6060
+            initialDelaySeconds: 20
+            periodSeconds: 5
       volumes:
         - name: scscf-config
           configMap:
