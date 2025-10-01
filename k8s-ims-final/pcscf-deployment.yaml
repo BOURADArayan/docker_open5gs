@@ -1,4 +1,3 @@
-# Fixed PCSCF Deployment - Avec inclusion explicite des routes NAT
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,30 +23,58 @@ spec:
             - |
               echo "Starting PCSCF with all required routes..."
               
-              # Copy all files
+              # Get HSS service IP and add to /etc/hosts
+              echo "=== Resolving HSS Service IP ==="
+              HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
+              if [ -z "$HSS_IP" ]; then
+                echo "Waiting for HSS service..."
+                for i in {1..30}; do
+                  HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
+                  if [ -n "$HSS_IP" ]; then
+                    break
+                  fi
+                  sleep 2
+                done
+              fi
+              
+              echo "HSS Service IP: $HSS_IP"
+              
+              # Add HSS to /etc/hosts
+              if [ -n "$HSS_IP" ]; then
+                sed -i '/hss.localdomain/d' /etc/hosts
+                echo "$HSS_IP hss.localdomain hss" >> /etc/hosts
+                echo "✓ Added hss.localdomain -> $HSS_IP to /etc/hosts"
+              fi
+              
               cp /etc/kamailio-config/* /usr/local/etc/kamailio/ 2>/dev/null || true
               mkdir -p /usr/local/etc/kamailio/route
               
-              # Get pod IP
               POD_IP=$(hostname -i)
               MYSQL_SERVICE_IP="mysql.ims.svc.cluster.local"
+              HSS_SERVICE_IP="hss.ims.svc.cluster.local"
               echo "Pod IP: $POD_IP"
               
-              # Create required directories for PCSCF
+              # Wait for HSS Diameter port
+              echo "Waiting for HSS Diameter port..."
+              for i in {1..20}; do
+                if timeout 5 bash -c '</dev/tcp/hss.localdomain/3868' 2>/dev/null; then
+                  echo "✓ HSS Diameter port is ready!"
+                  break
+                fi
+                sleep 3
+              done
+              
               echo "=== Creating PCSCF directories ==="
               mkdir -p /etc/kamailio_pcscf
               
-              # Create dispatcher.list file for PCSCF
               echo "=== Creating dispatcher.list for PCSCF ==="
               cat > /etc/kamailio_pcscf/dispatcher.list << 'EOF'
               # PCSCF Dispatcher List
-              # Format: setid(int) destination(sip uri) flags(int,opt) priority(int,opt) attrs(str,opt)
               1 sip:127.0.0.1:5060 0 0
               EOF
-              echo "✓ dispatcher.list created for PCSCF"
+              echo "✓ dispatcher.list created"
               
-              # Create pcscf.xml file
-              echo "=== Creating pcscf.xml for PCSCF ==="
+              echo "=== Creating pcscf.xml ==="
               cat > /etc/kamailio_pcscf/pcscf.xml << 'EOF'
               <?xml version="1.0" encoding="UTF-8"?>
               <DiameterPeer FQDN="pcscf.ims" Realm="ims" VendorId="0" ProductName="PCSCF" FirmwareRevision="1">
@@ -60,10 +87,9 @@ spec:
                   </Auth>
               </DiameterPeer>
               EOF
-              echo "✓ pcscf.xml created for PCSCF"
+              echo "✓ pcscf.xml created"
               
-              # Create all required route files
-              echo "=== Creating all route files ==="
+              echo "=== Creating route files ==="
               
               cat > /usr/local/etc/kamailio/route/xmlrpc.cfg << 'EOF'
               route[XMLRPC] {
@@ -80,9 +106,6 @@ spec:
               route[WEBSOCKET] {
                   if (nat_uac_test(64)) {
                       force_rport();
-                      if (is_method("REGISTER")) {
-                          fix_nated_register();
-                      }
                   }
                   return;
               }
@@ -90,7 +113,6 @@ spec:
               
               cat > /usr/local/etc/kamailio/route/register.cfg << 'EOF'
               route[REGISTER] {
-                  xlog("L_INFO", "PCSCF: Processing REGISTER request\n");
                   if (!t_relay()) {
                       sl_reply_error();
                   }
@@ -98,100 +120,53 @@ spec:
               }
               EOF
               
-              # Route NAT avec NATMANAGE
               cat > /usr/local/etc/kamailio/route/nat.cfg << 'EOF'
-              route[NATMANAGE] {
-                  xlog("L_INFO", "PCSCF: NAT management processing\n");
-                  
-                  if (is_request()) {
-                      if (has_totag()) {
-                          if (check_route_param("nat=yes")) {
-                              setbflag(6);
-                          }
-                      }
-                  }
-                  
-                  if (!(isflagset(5) || isbflagset(6))) {
-                      return;
-                  }
-                  
-                  if (is_request()) {
-                      if (!has_totag()) {
-                          if (t_is_branch_route()) {
-                              add_rr_param(";nat=yes");
-                          }
-                      }
-                  }
-                  
-                  if (is_reply()) {
-                      if (isbflagset(6)) {
-                          force_rport();
-                      }
-                  }
-                  
-                  return;
-              }
-              
-              route[NATDETECT] {
-                  xlog("L_INFO", "PCSCF: NAT detection\n");
-                  force_rport();
-                  if (nat_uac_test("19")) {
-                      if (is_method("REGISTER")) {
-                          fix_nated_register();
-                      } else {
-                          setflag(5);
-                      }
-                  }
-                  return;
-              }
+              # NAT routes defined in main config
               EOF
               
-              # Routes RTP avec toutes les fonctions
               cat > /usr/local/etc/kamailio/route/rtp.cfg << 'EOF'
               route[RTP] {
-                  xlog("L_INFO", "PCSCF: RTP processing\n");
                   return;
               }
-              
               route[RTPENGINE_OFFER] {
-                  xlog("L_INFO", "PCSCF: RTP engine offer\n");
                   return;
               }
-              
               route[RTPENGINE_ANSWER] {
-                  xlog("L_INFO", "PCSCF: RTP engine answer\n");
                   return;
               }
-              
               route[RTPENGINE_MANAGE] {
-                  xlog("L_INFO", "PCSCF: RTP engine management\n");
                   return;
               }
-              
               route[ENC_RTP] {
-                  xlog("L_INFO", "PCSCF: RTP encryption processing\n");
                   return;
               }
-              
               route[ENC_SRTP] {
-                  xlog("L_INFO", "PCSCF: SRTP encryption processing\n");
                   return;
               }
-              
               route[ENC_WS_RTP] {
-                  xlog("L_INFO", "PCSCF: WebSocket RTP encryption processing\n");
                   return;
               }
-              
               route[ENC_WSS_RTP] {
-                  xlog("L_INFO", "PCSCF: WebSocket Secure RTP encryption processing\n");
                   return;
               }
               EOF
               
               cat > /usr/local/etc/kamailio/route/mo.cfg << 'EOF'
               route[MO] {
-                  xlog("L_INFO", "PCSCF: Processing Mobile Originating request\n");
+                  record_route();
+                  if (!t_relay()) {
+                      sl_reply_error();
+                  }
+                  exit;
+              }
+              
+              route[MO_indialog] {
+                  if (has_totag()) {
+                      if (t_check_trans()) {
+                          t_relay();
+                          exit;
+                      }
+                  }
                   record_route();
                   if (!t_relay()) {
                       sl_reply_error();
@@ -202,7 +177,19 @@ spec:
               
               cat > /usr/local/etc/kamailio/route/mt.cfg << 'EOF'
               route[MT] {
-                  xlog("L_INFO", "PCSCF: Processing Mobile Terminating request\n");
+                  if (!t_relay()) {
+                      sl_reply_error();
+                  }
+                  exit;
+              }
+              
+              route[MT_indialog] {
+                  if (has_totag()) {
+                      if (t_check_trans()) {
+                          t_relay();
+                          exit;
+                      }
+                  }
                   if (!t_relay()) {
                       sl_reply_error();
                   }
@@ -212,92 +199,130 @@ spec:
               
               echo "✓ All route files created"
               
-              # CORRECTION CRITIQUE: Injecter l'inclusion de nat.cfg dans kamailio_pcscf.cfg
-              echo "=== Injecting nat.cfg inclusion into main config ==="
-              if ! grep -q "import_file.*nat.cfg" /usr/local/etc/kamailio/kamailio_pcscf.cfg; then
-                # Trouver la ligne avec les autres imports et ajouter nat.cfg
-                sed -i '/import_file.*route\/register.cfg/a import_file "route/nat.cfg"' /usr/local/etc/kamailio/kamailio_pcscf.cfg
-                echo "✓ nat.cfg inclusion added to main config"
-              else
-                echo "✓ nat.cfg already included"
-              fi
+              echo "=== Injecting NAT routes directly into main config ==="
               
-              # Comprehensive variable replacement
-              echo "=== Comprehensive variable replacement ==="
-              find /usr/local/etc/kamailio -name "*.cfg" | while read file; do
-                echo "Processing variables in: $file"
+              # Add module parameters at the beginning of the config
+              sed -i '/^#!KAMAILIO/a \
+              \
+              # NAT module parameters\
+              modparam("nathelper", "received_avp", "$avp(received)")\
+              modparam("registrar", "received_avp", "$avp(received)")' /usr/local/etc/kamailio/kamailio_pcscf.cfg
+              
+              cat >> /usr/local/etc/kamailio/kamailio_pcscf.cfg << 'EOFNAT'
+
+              route[NATMANAGE] {
+                  if (is_request()) {
+                      if (has_totag()) {
+                          if (check_route_param("nat=yes")) {
+                              setbflag(6);
+                          }
+                      }
+                  }
+                  if (!(isflagset(5) || isbflagset(6))) {
+                      return;
+                  }
+                  if (is_request()) {
+                      if (!has_totag()) {
+                          if (t_is_branch_route()) {
+                              add_rr_param(";nat=yes");
+                          }
+                      }
+                  }
+                  if (is_reply()) {
+                      if (isbflagset(6)) {
+                          force_rport();
+                      }
+                  }
+                  return;
+              }
+
+              route[NATDETECT] {
+                  force_rport();
+                  if (nat_uac_test("19")) {
+                      if (!is_method("REGISTER")) {
+                          setflag(5);
+                      }
+                  }
+                  return;
+              }
+
+              route[DEC_RTP] {
+                  return;
+              }
+
+              route[DEC_SRTP] {
+                  return;
+              }
+
+              route[DEC_WS_RTP] {
+                  return;
+              }
+
+              route[DEC_WSS_RTP] {
+                  return;
+              }
+              EOFNAT
+              
+              echo "✓ NAT routes injected"
+              
+              echo "=== Variable replacement ==="
+              HSS_IP="hss.ims.svc.cluster.local"
+              find /usr/local/etc/kamailio -name "*.cfg" -o -name "*.xml" | while read file; do
                 sed -i "s/PCSCF_IP/$POD_IP/g" "$file"
                 sed -i "s/LISTEN_IP/$POD_IP/g" "$file"
                 sed -i "s/NETWORK_IP/$POD_IP/g" "$file"
                 sed -i "s/MYSQL_IP/$MYSQL_SERVICE_IP/g" "$file"
+                sed -i "s/HSS_IP/$HSS_SERVICE_IP/g" "$file"
+                sed -i "s/IMS_DOMAIN/localdomain/g" "$file"
                 sed -i 's/UE_SUBSCRIPTION_EXPIRES/3605/g' "$file"
                 sed -i 's/SUBSCRIPTION_EXPIRES_ENV/3605/g' "$file"
                 sed -i 's/TCP_PROCESSES/4/g' "$file"
                 sed -i 's/PCSCF_PROCESSES/4/g' "$file"
                 sed -i 's/SHM_MEM/64/g' "$file"
                 sed -i 's/PKG_MEM/8/g' "$file"
+                sed -i 's/RTPENGINE_IP/127.0.0.1/g' "$file"
               done
               
-              echo "=== Verifying variable replacements ==="
-              grep -r "SUBSCRIPTION_EXPIRES_ENV" /usr/local/etc/kamailio/*.cfg || echo "✓ SUBSCRIPTION_EXPIRES_ENV replaced"
+              echo "✓ Variables replaced"
               
-              # Global preprocessor directive balancing
-              echo "=== Global preprocessor directive balancing ==="
+              # Verification
+              echo "=== Verification ==="
+              echo "DNS resolution test:"
+              getent hosts hss.localdomain
+              echo ""
+              echo "Connectivity test:"
+              timeout 3 bash -c '</dev/tcp/hss.localdomain/3868' && echo "✓ Can connect to HSS" || echo "✗ Cannot connect to HSS"
               
+              echo "=== Balancing preprocessor directives ==="
               total_ifdef=$(find /usr/local/etc/kamailio -name "*.cfg" -exec grep -h "^[[:space:]]*#!ifdef\|^[[:space:]]*#!ifndef" {} \; | wc -l)
               total_endif=$(find /usr/local/etc/kamailio -name "*.cfg" -exec grep -h "^[[:space:]]*#!endif" {} \; | wc -l)
-              
-              echo "Global count - ifdef/ifndef: $total_ifdef, endif: $total_endif"
+              echo "ifdef/ifndef: $total_ifdef, endif: $total_endif"
               
               if [ $total_ifdef -gt $total_endif ]; then
                 missing=$((total_ifdef - total_endif))
-                echo "⚠ Missing $missing #!endif directive(s) - Adding to main config file"
-                
                 for i in $(seq 1 $missing); do
-                  echo "" >> /usr/local/etc/kamailio/kamailio_pcscf.cfg
                   echo "#!endif" >> /usr/local/etc/kamailio/kamailio_pcscf.cfg
                 done
               else
-                echo "⚠ Counts balanced but forcing +1 #!endif for Kamailio parser context"
-                echo "" >> /usr/local/etc/kamailio/kamailio_pcscf.cfg
                 echo "#!endif" >> /usr/local/etc/kamailio/kamailio_pcscf.cfg
               fi
               
-              # Clean all config files
-              echo "=== Cleaning all config files ==="
               find /usr/local/etc/kamailio -name "*.cfg" | while read file; do
                 temp_file=$(mktemp)
-                sed 's/#!endif.*/#!endif/' "$file" | awk '{ print }' > "$temp_file"
-                echo "" >> "$temp_file"
+                sed 's/#!endif.*/#!endif/' "$file" > "$temp_file"
                 echo "" >> "$temp_file"
                 mv "$temp_file" "$file"
               done
               
-              # Final global verification
-              echo "=== Final global verification ==="
-              total_ifdef=$(find /usr/local/etc/kamailio -name "*.cfg" -exec grep -h "^[[:space:]]*#!ifdef\|^[[:space:]]*#!ifndef" {} \; | wc -l)
-              total_endif=$(find /usr/local/etc/kamailio -name "*.cfg" -exec grep -h "^[[:space:]]*#!endif" {} \; | wc -l)
-              echo "Final global count - ifdef/ifndef: $total_ifdef, endif: $total_endif"
-              
-              # Verify nat.cfg inclusion
-              echo "=== Verifying nat.cfg inclusion ==="
-              grep -n "nat.cfg" /usr/local/etc/kamailio/kamailio_pcscf.cfg || echo "WARNING: nat.cfg not found in includes"
-              
-              # Set library path and test configuration
               export LD_LIBRARY_PATH="/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH"
               
               echo "=== Testing Kamailio configuration ==="
               if kamailio -c -f /usr/local/etc/kamailio/kamailio_pcscf.cfg; then
-                echo "✓ Configuration syntax OK - Starting Kamailio PCSCF..."
+                echo "✓ Configuration OK - Starting Kamailio..."
                 exec kamailio -f /usr/local/etc/kamailio/kamailio_pcscf.cfg -P /tmp/kamailio.pid -DD -E -e
               else
-                echo "✗ Configuration error - showing details:"
-                echo "=== Checking import_file directives ==="
-                grep "import_file" /usr/local/etc/kamailio/kamailio_pcscf.cfg
-                echo "=== Available route files ==="
-                ls -la /usr/local/etc/kamailio/route/
-                echo "=== Error details ==="
-                kamailio -c -f /usr/local/etc/kamailio/kamailio_pcscf.cfg 2>&1 | grep -A5 "ERROR"
+                echo "✗ Configuration error:"
+                kamailio -c -f /usr/local/etc/kamailio/kamailio_pcscf.cfg 2>&1
                 sleep infinity
               fi
           env:
