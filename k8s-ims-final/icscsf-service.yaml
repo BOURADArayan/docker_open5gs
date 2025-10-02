@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: icscf
+  namespace: ims
+spec:
+  selector:
+    io.kompose.service: icscf
+  ports:
+    - name: sip-udp
+      protocol: UDP
+      port: 5060
+      targetPort: 5060
+    - name: sip-tcp
+      protocol: TCP
+      port: 5060
+      targetPort: 5060
+    - name: tcp-alt
+      protocol: TCP
+      port: 4060
+      targetPort: 4060
+  type: ClusterIP

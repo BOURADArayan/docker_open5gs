@@ -1,12 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  annotations:
-    kompose.cmd: kompose convert -f ../ims-complete-deploy.yaml --out .
-    kompose.version: 1.37.0 (fb0539e64)
+  name: pcscf
   labels:
     io.kompose.service: pcscf
-  name: pcscf
 spec:
   replicas: 1
   selector:
@@ -14,9 +11,6 @@ spec:
       io.kompose.service: pcscf
   template:
     metadata:
-      annotations:
-        kompose.cmd: kompose convert -f ../ims-complete-deploy.yaml --out .
-        kompose.version: 1.37.0 (fb0539e64)
       labels:
         io.kompose.service: pcscf
     spec:
@@ -27,11 +21,336 @@ spec:
             - /bin/bash
             - -c
             - |
-              echo "Starting PCSCF with specific configuration..."
-              # Copier les configurations spécifiques
-              cp /etc/kamailio-config/* /usr/local/etc/kamailio/
-              # Démarrer avec la configuration PCSCF spécifique
-              kamailio -f /usr/local/etc/kamailio/kamailio_pcscf.cfg -P /tmp/kamailio.pid -DD -E -e
+              echo "Starting PCSCF with all required routes..."
+              
+              # Get HSS service IP and add to /etc/hosts
+              echo "=== Resolving HSS Service IP ==="
+              HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
+              if [ -z "$HSS_IP" ]; then
+                echo "Waiting for HSS service..."
+                for i in {1..30}; do
+                  HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
+                  if [ -n "$HSS_IP" ]; then
+                    break
+                  fi
+                  sleep 2
+                done
+              fi
+              
+              echo "HSS Service IP: $HSS_IP"
+              
+              # Add HSS to /etc/hosts
+              if [ -n "$HSS_IP" ]; then
+                sed -i '/hss.localdomain/d' /etc/hosts
+                echo "$HSS_IP hss.localdomain hss" >> /etc/hosts
+                echo "✓ Added hss.localdomain -> $HSS_IP to /etc/hosts"
+              fi
+              
+              cp /etc/kamailio-config/* /usr/local/etc/kamailio/ 2>/dev/null || true
+              mkdir -p /usr/local/etc/kamailio/route
+              
+              POD_IP=$(hostname -i)
+              MYSQL_SERVICE_IP="mysql.ims.svc.cluster.local"
+              HSS_SERVICE_IP="hss.ims.svc.cluster.local"
+              echo "Pod IP: $POD_IP"
+              
+              # Wait for HSS Diameter port
+              echo "Waiting for HSS Diameter port..."
+              for i in {1..20}; do
+                if timeout 5 bash -c '</dev/tcp/hss.localdomain/3868' 2>/dev/null; then
+                  echo "✓ HSS Diameter port is ready!"
+                  break
+                fi
+                sleep 3
+              done
+              
+              echo "=== Creating PCSCF directories ==="
+              mkdir -p /etc/kamailio_pcscf
+              
+              echo "=== Creating dispatcher.list for PCSCF ==="
+              cat > /etc/kamailio_pcscf/dispatcher.list << 'EOF'
+              # PCSCF Dispatcher List
+              1 sip:127.0.0.1:5060 0 0
+              EOF
+              echo "✓ dispatcher.list created"
+              
+              echo "=== Creating pcscf.xml with proper Diameter configuration ==="
+              cat > /etc/kamailio_pcscf/pcscf.xml << EOF
+              <?xml version="1.0" encoding="UTF-8"?>
+              <DiameterPeer
+                      FQDN="pcscf.localdomain"
+                      Realm="localdomain"
+                      Vendor_Id="10415"
+                      Product_Name="CDiameterPeer"
+                      AcceptUnknownPeers="1"
+                      DropUnknownOnDisconnect="1"
+                      Tc="30"
+                      Workers="4"
+                      QueueLength="32"
+                      TransactionTimeout="10"
+                      SessionsHashSize="128"
+                      DefaultAuthSessionTimeout="3600"
+                      MaxAuthSessionTimeout="3600"
+              >
+                      <Peer FQDN="hss.localdomain" Realm="localdomain" port="3868"/>
+
+                      <Acceptor port="3868" bind="$POD_IP"/>
+                      <Acceptor port="3868" bind="0.0.0.0"/>
+
+                      <Auth id="16777216" vendor="10415"/>
+                      <Auth id="16777216" vendor="4491"/>
+                      <Auth id="16777216" vendor="13019"/>
+                      <Auth id="16777216" vendor="0"/>
+
+                      <Auth id="4" vendor="10415"/>
+                      <Acct id="4" vendor="10415"/>
+
+                      <SupportedVendor vendor="10415"/>
+
+                      <DefaultRoute FQDN="hss.localdomain" metric="10"/>
+              </DiameterPeer>
+              EOF
+              echo "✓ pcscf.xml created with proper Diameter configuration"
+              
+              echo "=== Creating route files ==="
+              
+              cat > /usr/local/etc/kamailio/route/xmlrpc.cfg << 'EOF'
+              route[XMLRPC] {
+                  if ((method=="POST" || method=="GET") && uri=~"^/RPC") {
+                      set_reply_no_connect();
+                      dispatch_rpc();
+                      exit;
+                  }
+                  return;
+              }
+              EOF
+              
+              cat > /usr/local/etc/kamailio/route/websocket.cfg << 'EOF'
+              route[WEBSOCKET] {
+                  if (nat_uac_test(64)) {
+                      force_rport();
+                  }
+                  return;
+              }
+              EOF
+              
+              cat > /usr/local/etc/kamailio/route/register.cfg << 'EOF'
+              route[REGISTER] {
+                  if (!t_relay()) {
+                      sl_reply_error();
+                  }
+                  exit;
+              }
+              EOF
+              
+              cat > /usr/local/etc/kamailio/route/nat.cfg << 'EOF'
+              # NAT routes defined in main config
+              EOF
+              
+              cat > /usr/local/etc/kamailio/route/rtp.cfg << 'EOF'
+              route[RTP] {
+                  return;
+              }
+              route[RTPENGINE_OFFER] {
+                  return;
+              }
+              route[RTPENGINE_ANSWER] {
+                  return;
+              }
+              route[RTPENGINE_MANAGE] {
+                  return;
+              }
+              route[ENC_RTP] {
+                  return;
+              }
+              route[ENC_SRTP] {
+                  return;
+              }
+              route[ENC_WS_RTP] {
+                  return;
+              }
+              route[ENC_WSS_RTP] {
+                  return;
+              }
+              EOF
+              
+              cat > /usr/local/etc/kamailio/route/mo.cfg << 'EOF'
+              route[MO] {
+                  record_route();
+                  if (!t_relay()) {
+                      sl_reply_error();
+                  }
+                  exit;
+              }
+              
+              route[MO_indialog] {
+                  if (has_totag()) {
+                      if (t_check_trans()) {
+                          t_relay();
+                          exit;
+                      }
+                  }
+                  record_route();
+                  if (!t_relay()) {
+                      sl_reply_error();
+                  }
+                  exit;
+              }
+              EOF
+              
+              cat > /usr/local/etc/kamailio/route/mt.cfg << 'EOF'
+              route[MT] {
+                  if (!t_relay()) {
+                      sl_reply_error();
+                  }
+                  exit;
+              }
+              
+              route[MT_indialog] {
+                  if (has_totag()) {
+                      if (t_check_trans()) {
+                          t_relay();
+                          exit;
+                      }
+                  }
+                  if (!t_relay()) {
+                      sl_reply_error();
+                  }
+                  exit;
+              }
+              EOF
+              
+              echo "✓ All route files created"
+              
+              echo "=== Injecting NAT routes directly into main config ==="
+              
+              # Add module parameters at the beginning of the config
+              sed -i '/^#!KAMAILIO/a \
+              \
+              # NAT module parameters\
+              modparam("nathelper", "received_avp", "$avp(received)")\
+              modparam("registrar", "received_avp", "$avp(received)")' /usr/local/etc/kamailio/kamailio_pcscf.cfg
+              
+              cat >> /usr/local/etc/kamailio/kamailio_pcscf.cfg << 'EOFNAT'
+
+              route[NATMANAGE] {
+                  if (is_request()) {
+                      if (has_totag()) {
+                          if (check_route_param("nat=yes")) {
+                              setbflag(6);
+                          }
+                      }
+                  }
+                  if (!(isflagset(5) || isbflagset(6))) {
+                      return;
+                  }
+                  if (is_request()) {
+                      if (!has_totag()) {
+                          if (t_is_branch_route()) {
+                              add_rr_param(";nat=yes");
+                          }
+                      }
+                  }
+                  if (is_reply()) {
+                      if (isbflagset(6)) {
+                          force_rport();
+                      }
+                  }
+                  return;
+              }
+
+              route[NATDETECT] {
+                  force_rport();
+                  if (nat_uac_test("19")) {
+                      if (!is_method("REGISTER")) {
+                          setflag(5);
+                      }
+                  }
+                  return;
+              }
+
+              route[DEC_RTP] {
+                  return;
+              }
+
+              route[DEC_SRTP] {
+                  return;
+              }
+
+              route[DEC_WS_RTP] {
+                  return;
+              }
+
+              route[DEC_WSS_RTP] {
+                  return;
+              }
+              EOFNAT
+              
+              echo "✓ NAT routes injected"
+              
+              echo "=== Variable replacement ==="
+              HSS_IP="hss.ims.svc.cluster.local"
+              find /usr/local/etc/kamailio -name "*.cfg" -o -name "*.xml" | while read file; do
+                sed -i "s/PCSCF_IP/$POD_IP/g" "$file"
+                sed -i "s/LISTEN_IP/$POD_IP/g" "$file"
+                sed -i "s/NETWORK_IP/$POD_IP/g" "$file"
+                sed -i "s/MYSQL_IP/$MYSQL_SERVICE_IP/g" "$file"
+                sed -i "s/HSS_IP/$HSS_SERVICE_IP/g" "$file"
+                sed -i "s/IMS_DOMAIN/localdomain/g" "$file"
+                sed -i 's/UE_SUBSCRIPTION_EXPIRES/3605/g' "$file"
+                sed -i 's/SUBSCRIPTION_EXPIRES_ENV/3605/g' "$file"
+                sed -i 's/TCP_PROCESSES/4/g' "$file"
+                sed -i 's/PCSCF_PROCESSES/4/g' "$file"
+                sed -i 's/SHM_MEM/64/g' "$file"
+                sed -i 's/PKG_MEM/8/g' "$file"
+                sed -i 's/RTPENGINE_IP/127.0.0.1/g' "$file"
+              done
+              
+              echo "✓ Variables replaced"
+              
+              # Verification
+              echo "=== Verification ==="
+              echo "DNS resolution test:"
+              getent hosts hss.localdomain
+              echo ""
+              echo "Connectivity test:"
+              timeout 3 bash -c '</dev/tcp/hss.localdomain/3868' && echo "✓ Can connect to HSS" || echo "✗ Cannot connect to HSS"
+              echo ""
+              echo "Diameter Configuration:"
+              cat /etc/kamailio_pcscf/pcscf.xml
+              
+              echo "=== Balancing preprocessor directives ==="
+              total_ifdef=$(find /usr/local/etc/kamailio -name "*.cfg" -exec grep -h "^[[:space:]]*#!ifdef\|^[[:space:]]*#!ifndef" {} \; | wc -l)
+              total_endif=$(find /usr/local/etc/kamailio -name "*.cfg" -exec grep -h "^[[:space:]]*#!endif" {} \; | wc -l)
+              echo "ifdef/ifndef: $total_ifdef, endif: $total_endif"
+              
+              if [ $total_ifdef -gt $total_endif ]; then
+                missing=$((total_ifdef - total_endif))
+                for i in $(seq 1 $missing); do
+                  echo "#!endif" >> /usr/local/etc/kamailio/kamailio_pcscf.cfg
+                done
+              else
+                echo "#!endif" >> /usr/local/etc/kamailio/kamailio_pcscf.cfg
+              fi
+              
+              find /usr/local/etc/kamailio -name "*.cfg" | while read file; do
+                temp_file=$(mktemp)
+                sed 's/#!endif.*/#!endif/' "$file" > "$temp_file"
+                echo "" >> "$temp_file"
+                mv "$temp_file" "$file"
+              done
+              
+              export LD_LIBRARY_PATH="/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH"
+              
+              echo "=== Testing Kamailio configuration ==="
+              if kamailio -c -f /usr/local/etc/kamailio/kamailio_pcscf.cfg; then
+                echo "✓ Configuration OK - Starting Kamailio..."
+                exec kamailio -f /usr/local/etc/kamailio/kamailio_pcscf.cfg -P /tmp/kamailio.pid -DD -E -e
+              else
+                echo "✗ Configuration error:"
+                kamailio -c -f /usr/local/etc/kamailio/kamailio_pcscf.cfg 2>&1
+                sleep infinity
+              fi
           env:
             - name: COMPONENT_NAME
               value: pcscf
@@ -42,6 +361,8 @@ spec:
             - containerPort: 5060
               protocol: UDP
             - containerPort: 5060
+              protocol: TCP
+            - containerPort: 3868
               protocol: TCP
       volumes:
         - name: pcscf-config

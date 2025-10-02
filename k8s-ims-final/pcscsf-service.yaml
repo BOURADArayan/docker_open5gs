@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pcscf
+  namespace: ims
+spec:
+  selector:
+    io.kompose.service: pcscf
+  ports:
+    - name: sip-udp
+      protocol: UDP
+      port: 5060
+      targetPort: 5060
+    - name: sip-tcp
+      protocol: TCP
+      port: 5060
+      targetPort: 5060
+  type: ClusterIP
