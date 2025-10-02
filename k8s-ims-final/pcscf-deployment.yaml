@@ -74,20 +74,43 @@ spec:
               EOF
               echo "✓ dispatcher.list created"
               
-              echo "=== Creating pcscf.xml ==="
-              cat > /etc/kamailio_pcscf/pcscf.xml << 'EOF'
+              echo "=== Creating pcscf.xml with proper Diameter configuration ==="
+              cat > /etc/kamailio_pcscf/pcscf.xml << EOF
               <?xml version="1.0" encoding="UTF-8"?>
-              <DiameterPeer FQDN="pcscf.ims" Realm="ims" VendorId="0" ProductName="PCSCF" FirmwareRevision="1">
-                  <Peer FQDN="hss.ims" Realm="ims" Port="3868"/>
-                  <Acceptor Port="3868"/>
-                  <SupportedVendor VendorId="0" AuthApplicationId="16777216"/>
-                  <Auth>
-                      <SessionTimer>60</SessionTimer>
-                      <SessionGraceTimer>60</SessionGraceTimer>
-                  </Auth>
+              <DiameterPeer
+                      FQDN="pcscf.localdomain"
+                      Realm="localdomain"
+                      Vendor_Id="10415"
+                      Product_Name="CDiameterPeer"
+                      AcceptUnknownPeers="1"
+                      DropUnknownOnDisconnect="1"
+                      Tc="30"
+                      Workers="4"
+                      QueueLength="32"
+                      TransactionTimeout="10"
+                      SessionsHashSize="128"
+                      DefaultAuthSessionTimeout="3600"
+                      MaxAuthSessionTimeout="3600"
+              >
+                      <Peer FQDN="hss.localdomain" Realm="localdomain" port="3868"/>
+
+                      <Acceptor port="3868" bind="$POD_IP"/>
+                      <Acceptor port="3868" bind="0.0.0.0"/>
+
+                      <Auth id="16777216" vendor="10415"/>
+                      <Auth id="16777216" vendor="4491"/>
+                      <Auth id="16777216" vendor="13019"/>
+                      <Auth id="16777216" vendor="0"/>
+
+                      <Auth id="4" vendor="10415"/>
+                      <Acct id="4" vendor="10415"/>
+
+                      <SupportedVendor vendor="10415"/>
+
+                      <DefaultRoute FQDN="hss.localdomain" metric="10"/>
               </DiameterPeer>
               EOF
-              echo "✓ pcscf.xml created"
+              echo "✓ pcscf.xml created with proper Diameter configuration"
               
               echo "=== Creating route files ==="
               
@@ -292,6 +315,9 @@ spec:
               echo ""
               echo "Connectivity test:"
               timeout 3 bash -c '</dev/tcp/hss.localdomain/3868' && echo "✓ Can connect to HSS" || echo "✗ Cannot connect to HSS"
+              echo ""
+              echo "Diameter Configuration:"
+              cat /etc/kamailio_pcscf/pcscf.xml
               
               echo "=== Balancing preprocessor directives ==="
               total_ifdef=$(find /usr/local/etc/kamailio -name "*.cfg" -exec grep -h "^[[:space:]]*#!ifdef\|^[[:space:]]*#!ifndef" {} \; | wc -l)
@@ -335,6 +361,8 @@ spec:
             - containerPort: 5060
               protocol: UDP
             - containerPort: 5060
+              protocol: TCP
+            - containerPort: 3868
               protocol: TCP
       volumes:
         - name: pcscf-config
