@@ -1,0 +1,560 @@
+apiVersion: v1
+data:
+  dispatcher.list: |
+    # SBC's
+  kamailio_pcscf.cfg: "#\n# TelcoSuite (V3) Proxy-CSCF\n#\n# Kamailio (OpenSER) SIP
+    Server\n#     - web: http://www.kamailio.org\n#     - git: http://sip-router.org\n#\n#
+    Refer to the Core CookBook at http://www.kamailio.org/dokuwiki/doku.php\n# for
+    an explanation of possible statements, functions and parameters.\n#\n\nimport_file
+    \"pcscf.cfg\"\n\n####### Defined Values #########\n# *** Value defines - IDs used
+    later in config\n#!define DISPATCHER_LIST_SBC 1\n\n#!define DISPATCHER_DST_AVP
+    \"i:1\"\n#!define DISPATCHER_GRP_AVP \"i:2\"\n#!define DISPATCHER_CNT_AVP \"i:3\"\n#!define
+    DISPATCHER_SOCK_AVP \"i:4\"\n\n#!define RR_CUSTOM_USER_AVP \"i:5\"\n#!define DLG_TIMEOUT_AVP
+    \"i:6\"\n\n#!define FLT_MOBILE_ORIG 1\n#!define FLT_DIALOG 2\n#!define FLT_NAT
+    3\n#!define FLT_RTP 4\n#!define FLT_CAPTURE 5\n\n####### Global Parameters #########\ndebug=2\nlog_stderror=no\n\nmemdbg=5\nmemlog=5\n\nmax_while_loops=5000\n\n#!ifdef
+    WITH_XMLRPC\nlisten=tcp:127.0.0.1:5060\n#!endif\n\n# Locks all ser pages into
+    memory making it unswappable (in general one \n# doesn't want his sip proxy swapped
+    out )\nmlock_pages=yes\n# Tries to pre-fault all the shared memory, before starting.
+    When \"on\", start \n# time will increase, but combined with mlock_pages will
+    guarantee ser will get \n# all its memory from the beginning (no more kswapd slow
+    downs)\nshm_force_alloc=yes\n\n# Do SRV-Loadbalancing:\ndns_srv_lb=on\n# Always
+    prefer IPv6:\ndns_try_ipv6=on\n# Always prefer IPv6:\ndns_cache_flags=4\n# DNS-Based
+    failover\nuse_dns_failover=on\n# Query NAPTR-Records as well:\ndns_try_naptr=off\n#
+    DNS cache won't be used (all dns lookups will result into a DNS request)\nuse_dns_cache=off\n\nuser_agent_header=\"User-Agent:
+    TelcoSuite Proxy-CSCF\"\nserver_header=\"Server: TelcoSuite Proxy-CSCF\"\n\nlog_facility=LOG_LOCAL0\nlog_name=\"pcscf\"\nlog_prefix_mode=1\nlog_prefix=\"{$mt
+    $hdr(CSeq) $ci $cfg(route)} \"\n\nfork=yes\nchildren=4\n\n#!ifndef TCP_PROCESSES\n#
+    Number of TCP Processes\n#!define TCP_PROCESSES 16\n#!endif\n\n#!ifdef WITH_TLS\n#
+    Check, if TCP is enabled:\n#!ifndef WITH_TCP\n#!define WITH_TCP\n#!endif\nenable_tls=yes\n#!endif\n\n#!ifdef
+    WITH_XMLRPC\n#!ifndef WITH_TCP\n#!define WITH_TCP\n#!endif\n#!ifndef TCP_PROCESSES\n#
+    Number of TCP Processes\n#!define TCP_PROCESSES 3\n#!endif\n#!endif\n\n#!ifdef
+    WITH_TCP\n# life time of TCP connection when there is no traffic\n# - a bit higher
+    than registration expires to cope with UA behind NAT\ntcp_connection_lifetime=UE_SUBSCRIPTION_EXPIRES\n#
+    If a message received over a tcp connection has \"alias\" in its via a new tcp\n#
+    alias port will be created for the connection the message came from (the\n# alias
+    port will be set to the via one).\n#\n# Note: For NAT traversal of TCP clients
+    it is better to not use \n# tcp_accept_aliases but just use nathelper module and
+    \n# fix_nated_[contact|register] functions. \ntcp_accept_aliases=no\n# Enable
+    SIP outbound TCP keep-alive using PING-PONG (CRLFCRLF - CRLF).\ntcp_crlf_ping=yes\n\ntcp_reuse_port=yes\n\ntcp_accept_no_cl=yes\ntcp_rd_buf_size=16384\n\n#!ifdef
+    TCP_PROCESSES\ntcp_children=TCP_PROCESSES\n#!endif\n#!else\ndisable_tcp=yes\n#!endif\n\n/*
+    uncomment the next line to disable the auto discovery of local aliases\n   based
+    on reverse DNS on IPs (default on) */\nauto_aliases=no\n\n#phone2tel=1\n\nudp_mtu
+    = 1300\nudp_mtu_try_proto = TCP\n\n/* uncomment and configure the following line
+    if you want Kamailio to \n   bind on a specific interface/port/proto (default
+    bind on all available) */\n\nsystem.shutdownmode = 0 desc \"System shutdown mode\"\nsystem.service
+    = \"Proxy-CSCF\" desc \"Function of this server\"\n\n####### Modules Section ########\n\n#
+    set paths to location of modules\nmpath=\"/usr/lib64/kamailio/modules_k/:/usr/lib64/kamailio/modules/:/usr/lib/kamailio/modules_k/:/usr/lib/kamailio/modules/:/usr/lib/x86_64-linux-gnu/kamailio/modules/:/usr/local/lib64/kamailio/modules\"\n\n#
+    Fifo Module\n# Kamailio Extensions (e.g. MI:uptime, MI:version, cfg:isflagset
+    etc.)\nloadmodule \"kex.so\"\nloadmodule \"corex.so\"\n# Transaction Module\nloadmodule
+    \"tm.so\"\nloadmodule \"tmx.so\"\nloadmodule \"sl.so\"\nloadmodule \"rr.so\"\nloadmodule
+    \"pv.so\"\nloadmodule \"maxfwd.so\"\nloadmodule \"textops.so\"\nloadmodule \"textopsx.so\"\n#
+    SIP-Utilities: options_reply\nloadmodule \"siputils.so\"\nloadmodule \"sanity.so\"\nloadmodule
+    \"ctl.so\"\nloadmodule \"cfg_rpc.so\"\nloadmodule \"xlog.so\"\nloadmodule \"auth.so\"\nloadmodule
+    \"dispatcher.so\"\nloadmodule \"sctp.so\"\nloadmodule \"path.so\"\nloadmodule
+    \"statistics.so\"\n\nloadmodule \"ims_dialog.so\"\nloadmodule \"ims_usrloc_pcscf.so\"\n#!ifdef
+    WITH_IPSEC\nloadmodule \"ims_ipsec_pcscf.so\"\n#!endif\nloadmodule \"ims_registrar_pcscf.so\"\n\n#!ifdef
+    WITH_XMLRPC\nloadmodule \"xmlrpc.so\"\n#!endif\n\n#!ifdef WITH_REGINFO\nloadmodule
+    \"pua.so\"\n#!endif\n\n#!ifdef DB_URL\nloadmodule \"db_mysql.so\"\n#!ifdef DB_URL2\nloadmodule
+    \"db_cluster.so\"\n#!endif\n#!endif\n\n#!ifdef WITH_DEBUG\nloadmodule \"debugger.so\"\n#!endif\n\nloadmodule
+    \"usrloc.so\"\nloadmodule \"registrar.so\"\nloadmodule \"rtimer.so\"\nloadmodule
+    \"nathelper.so\"\n\n#!ifdef WITH_ANTIFLOOD\nloadmodule \"pike.so\"\n#!endif\n\n#!ifdef
+    WITH_TLS\nloadmodule \"tls.so\"\n#!endif\n\n#!ifdef WITH_RTPPING\nloadmodule \"rtpping.so\"\n#!endif\n\n\nloadmodule
+    \"sdpops.so\"\nloadmodule \"rtpengine.so\"\n\n#!ifdef WITH_WEBSOCKET\nloadmodule
+    \"xhttp.so\"\nloadmodule \"websocket.so\"\n#!endif\n\n#!ifdef WITH_RX\nloadmodule
+    \"cdp.so\"\nloadmodule \"cdp_avp.so\"\nloadmodule \"ims_qos.so\"\n#!endif\n\n#!ifdef
+    WITH_N5\nloadmodule \"http_client.so\"\nloadmodule \"jansson.so\"\nloadmodule
+    \"nghttp2.so\"\nloadmodule \"uuid.so\"\n#!endif\n\n#!ifdef CAPTURE_NODE\nloadmodule
+    \"siptrace.so\"\n#!endif\n\n#!ifdef WITH_NATPING\nloadmodule \"uac.so\"\nloadmodule
+    \"sqlops.so\"\n#!endif\n\n# HTable as a cache:\nloadmodule \"htable.so\"\n\n#!ifdef
+    WITH_DEBUG\n#loadmodule \"debugger.so\"\nmodparam(\"debugger\", \"mod_hash_size\",
+    5)\nmodparam(\"debugger\", \"mod_level_mode\", 1)\nmodparam(\"debugger\", \"mod_level\",
+    \"xlog=3\")\nmodparam(\"debugger\", \"mod_level\", \"rtpengine=3\")\nmodparam(\"debugger\",
+    \"mod_level\", \"ims_qos=3\")\n#!ifdef WITH_IPSEC\nmodparam(\"debugger\", \"mod_level\",
+    \"ims_ipsec_pcscf=3\")\n#!endif\nmodparam(\"debugger\", \"mod_level\", \"textops=3\")\nmodparam(\"debugger\",
+    \"mod_level\", \"tm=3\")\nmodparam(\"debugger\", \"mod_level\", \"ims_registrar_pcscf=3\")\nmodparam(\"debugger\",
+    \"mod_level\", \"ims_usrloc_pcscf=3\")\n#!ifdef WITH_DEBUG_TRACE\nmodparam(\"debugger\",
+    \"cfgtrace\", 1)\n#!endif\n#!endif\n\nloadmodule \"jsonrpcs.so\"\n# ----- jsonrpcs
+    params -----\nmodparam(\"jsonrpcs\", \"pretty_format\", 1)\n/* set the path to
+    RPC fifo control file */\nmodparam(\"jsonrpcs\", \"fifo_name\", \"/var/run/kamailio/kamailio_rpc.fifo\")\n/*
+    set the path to RPC unix socket control file */\nmodparam(\"jsonrpcs\", \"dgram_socket\",
+    \"/var/run/kamailio/kamailio_rpc.sock\")\n\n# ----------------- setting module-specific
+    parameters ---------------\n#!ifdef DB_URL2\n# ----- db_cluster params -----\nmodparam(\"db_cluster\",
+    \"connection\", DB_URL)\nmodparam(\"db_cluster\", \"connection\", DB_URL2)\nmodparam(\"db_cluster\",
+    \"cluster\", \"cluster1=>con1=2s2s;con2=1s1s\")\n#!endif\n\n#!ifdef WITH_ANTIFLOOD\n#
+    ----- pike params -----\nmodparam(\"pike\", \"sampling_time_unit\", 2)\nmodparam(\"pike\",
+    \"reqs_density_per_unit\", 16)\nmodparam(\"pike\", \"remove_latency\", 4)\n\n#
+    ----- htable params -----\n# ip ban htable with autoexpire after 5 minutes\nmodparam(\"htable\",
+    \"htable\", \"ipban=>size=8;autoexpire=300\")\nmodparam(\"htable\", \"htable\",
+    \"failedauth=>size=8;autoexpire=120\")\nmodparam(\"htable\", \"htable\", \"natpingfrom=>size=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\n#!endif\n\nmodparam(\"htable\",
+    \"htable\", \"a=>size=8;autoexpire=20\")\n\n#!ifdef WITH_IMS_HDR_CACHE\nmodparam(\"htable\",
+    \"htable\", \"serviceroutes=>size=16;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\nmodparam(\"htable\",
+    \"htable\", \"associateduris=>size=16;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\n#!endif\n\n#!ifdef
+    WITH_NATPING\nmodparam(\"htable\", \"htable\", \"natping=>size=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\nmodparam(\"htable\",
+    \"htable\", \"natpingfail=>size=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\nmodparam(\"htable\",
+    \"htable\", \"natpingfrom=>size=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\n#!ifdef
+    DB_URL2\nmodparam(\"sqlops\",\"sqlcon\",\"pcscf=>cluster://cluster1\")\n#!else\nmodparam(\"sqlops\",\"sqlcon\",
+    SQLOPS_DBURL)\n#!endif\n\nmodparam(\"uac\",\"restore_mode\",\"none\")\n\n# -----------------
+    Settings for RTimer ---------------\n# time interval set to 60 seconds\nmodparam(\"rtimer\",
+    \"timer\", \"name=NATPING;interval=5;mode=1;\")\nmodparam(\"rtimer\", \"exec\",
+    \"timer=NATPING;route=NATPING\")\n#!endif\n\n# ----- tm params -----\n# auto-discard
+    branches from previous serial forking leg\n#modparam(\"tm\", \"failure_reply_mode\",
+    3)\n# default retransmission timeout: 3 sec\nmodparam(\"tm\", \"fr_timer\", 3000)\n#
+    default invite retransmission timeout after 1xx: 120sec\nmodparam(\"tm\", \"fr_inv_timer\",
+    120000)\n# Dont reply automatically with \"100 Trying\"\nmodparam(\"tm\", \"auto_inv_100\",
+    0)\n\n# ----- rr params -----\n# add value to ;lr param to cope with most of the
+    UAs\nmodparam(\"rr\", \"enable_full_lr\", 1)\n# do not append from tag to the
+    RR (no need for this script)\nmodparam(\"rr\", \"append_fromtag\", 1)\n# add a
+    Username to RR-Header\nmodparam(\"rr\", \"add_username\", 1)\n# Take User from
+    a custom AVP\nmodparam(\"rr\", \"custom_user_avp\", \"$avp(RR_CUSTOM_USER_AVP)\")\nmodparam(\"rr\",
+    \"force_send_socket\", 1)\n\n#!ifdef WITH_XMLRPC\n# ----- xmlrpc params -----\nmodparam(\"xmlrpc\",
+    \"route\", \"XMLRPC\");\nmodparam(\"xmlrpc\", \"url_match\", \"^/RPC\")\n#!endif\n\n#!ifdef
+    WITH_TLS\n# ----- tls params -----\nmodparam(\"tls\", \"config\", \"/etc/kamailio_pcscf/tls.cfg\")\n#!endif\n\n#
+    ----- rtpproxy params -----\nmodparam(\"rtpengine\", \"setid_default\", 1)\nmodparam(\"rtpengine\",
+    \"rtpengine_sock\", \"1 == udp:RTPENGINE_IP:2223\")\n#modparam(\"rtpengine\",
+    \"rtpengine_sock\", \"2 == udp:localhost:2224\")\nmodparam(\"rtpengine\", \"setid_avp\",
+    \"$avp(setid)\")\nmodparam(\"rtpengine\", \"extra_id_pv\", \"$avp(extra_id)\")\n\nmodparam(\"path\",
+    \"use_received\", 1)\n\n# ----- ctl params -----\nmodparam(\"ctl\", \"binrpc\",
+    \"unix:/var/run/kamailio/kamailio_ctl\")\n\n# ----------------- Settings for Dispatcher
+    ---------------\nmodparam(\"dispatcher\", \"list_file\", \"/etc/kamailio_pcscf/dispatcher.list\")\n\n#
+    Dispatcher: Enable Failover-Support\nmodparam(\"dispatcher\", \"flags\", 2)\n#
+    Dispatcher: Overwrite Destination address, if required.\nmodparam(\"dispatcher\",
+    \"force_dst\", 1)\n# AVP's required for Fail-Over-Support:\n#modparam(\"dispatcher\",
+    \"dst_avp\", \"$avp(DISPATCHER_DST_AVP)\")\n#modparam(\"dispatcher\", \"grp_avp\",
+    \"$avp(DISPATCHER_GRP_AVP)\")\n#modparam(\"dispatcher\", \"cnt_avp\", \"$avp(DISPATCHER_CNT_AVP)\")\n#modparam(\"dispatcher\",
+    \"sock_avp\", \"$avp(DISPATCHER_SOCK_AVP)\")\n\n#modparam(\"dispatcher\", \"xavp_dst\",
+    \"$avp(DISPATCHER_DST_AVP)\")\n#modparam(\"dispatcher\", \"xavp_dst_mode\", 0)\n#modparam(\"dispatcher\",
+    \"xavp_ctx\", \"$avp(DISPATCHER_CNT_AVP)\")\n#modparam(\"dispatcher\", \"xavp_ctx_mode\",
+    0)\n\n# Try to recover disabled destinations every 15 seconds.\nmodparam(\"dispatcher\",
+    \"ds_ping_interval\", 15)\n# Actively query the gateways:\nmodparam(\"dispatcher\",
+    \"ds_probing_mode\", 1)\n\n# -- usrloc params --\n#!ifdef DB_URL\n#!ifdef DB_URL2\nmodparam(\"ims_usrloc_pcscf\",
+    \"db_url\", \"cluster://cluster1\")\n#!else\nmodparam(\"ims_usrloc_pcscf\", \"db_url\",
+    DB_URL)\n#!endif\nmodparam(\"ims_usrloc_pcscf\", \"db_mode\", 0)\n#!endif\n#modparam(\"ims_usrloc_pcscf\",
+    \"hashing_type\", 2)\nmodparam(\"ims_usrloc_pcscf\", \"enable_debug_file\", 0)\nmodparam(\"ims_usrloc_pcscf\",
+    \"match_contact_host_port\", 1)\nmodparam(\"ims_registrar_pcscf\", \"is_registered_fallback2ip\",
+    1)\nmodparam(\"ims_registrar_pcscf\", \"ignore_reg_state\", 1)\nmodparam(\"ims_registrar_pcscf\",
+    \"ignore_contact_rxport_check\", 1)\nmodparam(\"ims_registrar_pcscf\", \"pending_reg_expires\",
+    30)\nmodparam(\"ims_registrar_pcscf\", \"subscription_expires\", UE_SUBSCRIPTION_EXPIRES)\nmodparam(\"ims_registrar_pcscf\",
+    \"delete_delay\", CONTACT_DELETE_DELAY)\nmodparam(\"ims_usrloc_pcscf\", \"expires_grace\",
+    120)\n\n#!ifdef WITH_REGINFO\nmodparam(\"ims_registrar_pcscf\", \"subscribe_to_reginfo\",
+    1)\nmodparam(\"ims_registrar_pcscf\", \"publish_reginfo\", 1)\nmodparam(\"ims_registrar_pcscf\",
+    \"pcscf_uri\", \"sip:HOSTNAME\")\n#!else\nmodparam(\"ims_registrar_pcscf\", \"subscribe_to_reginfo\",
+    0)\nmodparam(\"ims_registrar_pcscf\", \"publish_reginfo\", 0)\n#!endif\n\n#!ifdef
+    WITH_IPSEC\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_listen_addr\", IPSEC_LISTEN_ADDR)\nmodparam(\"ims_ipsec_pcscf\",
+    \"ipsec_client_port\", IPSEC_CLIENT_PORT)\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_server_port\",
+    IPSEC_SERVER_PORT)\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_spi_id_start\", 4096)\nmodparam(\"ims_ipsec_pcscf\",
+    \"ipsec_max_connections\", IPSEC_MAX_CONN)\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_preferred_ealg\",
+    \"null\")\nmodparam(\"htable\", \"htable\", \"ipsec_clients=>size=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\n#!endif\n\n#!ifdef
+    WITH_RX\n# -- CDP params --\nmodparam(\"cdp\",\"config_file\",\"/etc/kamailio_pcscf/pcscf.xml\")\n#
+    -- diameter_rx params --\nmodparam(\"ims_qos\", \"rx_dest_realm\", \"PCRF_REALM\")\nmodparam(\"ims_qos\",
+    \"early_qosrelease_reason\", \"Sorry - QoS failed\")\nmodparam(\"ims_qos\", \"confirmed_qosrelease_headers\",
+    \"X-Reason: QoS failed\\r\\n\")\nmodparam(\"ims_qos\", \"authorize_video_flow\",
+    1)\nmodparam(\"ims_qos\", \"af_signaling_ip\", RX_AF_SIGNALING_IP)\nmodparam(\"ims_qos\",
+    \"include_rtcp_fd\", 1)\nmodparam(\"ims_qos\", \"rx_auth_expiry\", UE_SUBSCRIPTION_EXPIRES)\nmodparam(\"ims_qos\",
+    \"recv_mode\", 1)\nmodparam(\"ims_qos\", \"dialog_direction\", RX_IMS_REG_DIALOG_DIRECTION)\n#!endif\n\n#!ifdef
+    WITH_N5\n\n# Tables to store users and their session details\nmodparam(\"htable\",
+    \"htable\", \"user_data=>size=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\",
+    \"user_ids=>size=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\", \"user_sdps_ip=>size=8;autoexpire=3600;\")\nmodparam(\"htable\",
+    \"htable\", \"user_sdps_port=>size=8;autoexpire=3600;\")\nmodparam(\"htable\",
+    \"htable\", \"user_sdps_rtcp_port=>size=8;autoexpire=3600;\")\nmodparam(\"htable\",
+    \"htable\", \"user_sip_ips=>size=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\",
+    \"user_sip_ports=>size=8;autoexpire=3600;\")\n\n# HTTP2 for 5G -- Modules Parameters\nmodparam(\"http_client\",
+    \"httpredirect\", 1)\nmodparam(\"http_client\", \"useragent\", \"AF\")\nmodparam(\"http_client\",
+    \"maxdatasize\", 64535)\nmodparam(\"http_client\", \"connection_timeout\", 2)\nmodparam(\"http_client\",
+    \"keep_connections\", 1)\nmodparam(\"http_client\", \"response_headers\", 1)\nmodparam(\"http_client\",
+    \"query_result\", 1)\nmodparam(\"nghttp2\", \"listen_addr\", \"N5_BIND_IP\")\nmodparam(\"nghttp2\",
+    \"listen_port\", \"N5_BIND_PORT\")\n# Replace the following with your own Key
+    and Cert, you can use HAProxy to terminate TLS towards Clients e.g. Open5gs PCF\n#
+    modparam(\"nghttp2\", \"tls_private_key\", \"/mnt/pcscf/http2_key.pem\")\n# modparam(\"nghttp2\",
+    \"tls_public_key\", \"/mnt/pcscf/http2_tr.pem\")\n\nmodparam(\"rtimer\", \"timer\",
+    \"name=NRF_NFM;interval=5;mode=1;\")\nmodparam(\"rtimer\", \"exec\", \"timer=NRF_NFM;route=NRF_NFM\")\n#!endif\n\n#
+    -- pua params --\n#!ifdef WITH_REGINFO\n#!ifdef DB_URL\n#!ifdef DB_URL2\nmodparam(\"pua\",
+    \"db_url\", \"cluster://cluster1\")\n#!else\nmodparam(\"pua\", \"db_url\", DB_URL)\n#!endif\n#!endif\n#!endif\n\n#
+    -- ims_dialog params --\nmodparam(\"ims_dialog\", \"dlg_flag\", FLT_DIALOG)\nmodparam(\"ims_dialog\",
+    \"timeout_avp\", \"$avp(DLG_TIMEOUT_AVP)\")\nmodparam(\"ims_dialog\", \"detect_spirals\",
+    0)\nmodparam(\"ims_dialog\", \"profiles_no_value\", \"orig ; term\")\nmodparam(\"ims_dialog\",
+    \"profiles_with_value\", \"caller ; callee\")\n#!ifdef DB_URL\n#!ifdef DB_URL2\nmodparam(\"ims_dialog\",
+    \"db_url\", \"cluster://cluster1\")\n#!else\nmodparam(\"ims_dialog\", \"db_url\",
+    DB_URL)\n#!endif\nmodparam(\"ims_dialog\", \"db_mode\", 0)\n#!endif\n\n#!ifdef
+    CAPTURE_NODE\n# Destination, where to send the traffic\nmodparam(\"siptrace\",
+    \"duplicate_uri\", CAPTURE_NODE)\n# Trace all traffic\nmodparam(\"siptrace\",
+    \"trace_on\", 1)\nmodparam(\"siptrace\", \"trace_to_database\", 0)\nmodparam(\"siptrace\",
+    \"trace_flag\", FLT_CAPTURE)\nmodparam(\"siptrace\", \"hep_mode_on\", 1)\n#!endif\n\n#
+    -- statistics params --\nmodparam(\"statistics\", \"variable\", \"register_success\")\nmodparam(\"statistics\",
+    \"variable\", \"register_failed\")\nmodparam(\"statistics\", \"variable\", \"register_time\")\n\n#
+    Main SIP request routing logic\n# - processing of any incoming SIP request starts
+    with this route\nroute {\n##!ifdef WITH_DEBUG\n\txnotice(\"PCSCF: $rm $ru ($fu
+    ($si:$sp) to $tu, $ci)\\n\");\n##!endif\n\n#!ifdef WITH_WEBSOCKET\n\tif (($Rp
+    == MY_WS_PORT || $Rp == MY_WSS_PORT) && !(proto == WS || proto == WSS)) {\n\t\txlog(\"L_WARN\",
+    \"Websocket-request received on SIP/$Rp\\n\");\n\t\tsl_send_reply(\"403\", \"Forbidden
+    - Websocket-request received on SIP/$Rp\");\n\t\texit;\n\t}\n#!endif\n\t# per
+    request initial checks\n\troute(REQINIT);\n\n#!ifdef WITH_IPSEC\n\tif (is_request()
+    && is_method(\"REGISTER\")) {\n\t\tsht_lock(\"ipsec_clients=>ipsec_clients_lock\");\n\t\t$sht(ipsec_clients=>$si)
+    = $null;\n\t\tif ($hdrc(Security-Client) == 1) {\n\t\t\t$sht(ipsec_clients=>$si)
+    = 1;\n\t\t}\n\t\tsht_unlock(\"ipsec_clients=>ipsec_clients_lock\");\n\t}\n#!endif\n\n\t#
+    CANCEL processing\n\tif (is_method(\"CANCEL\")) {\n\t\tif (t_check_trans()) {\n\t\t\tt_relay();\n\t\t}\n\t\texit;\n\t}\n\n\tif
+    (is_method(\"NOTIFY\") && (uri==myself)) {\n\t\troute(NOTIFY);\n\t\texit;\n\t}\n\n\t#
+    handle retransmissions\n\tif (!is_method(\"ACK\")) {\n\t\tif(t_precheck_trans())
+    {\n\t\t\tt_check_trans();\n\t\t\texit;\n\t\t}\n\t}\n\t#t_check_trans();\n\n\t#
+    Check for Re-Transmissions\n\tt_check_trans();\n\n\t# handle requests within SIP
+    dialogs\n\troute(WITHINDLG);\n\n\t### only initial requests (no To tag)\n\n\tif
+    (is_method(\"UPDATE\")) {\n\t\tsend_reply(\"403\",\"Forbidden - Target refresh
+    outside dialog not allowed\");\n\t\tbreak;\n\t}\n\tif (is_method(\"BYE|PRACK\"))
+    {\n\t\tsend_reply(\"403\",\"Forbidden - Originating subsequent requests outside
+    dialog not allowed\");\n\t\tbreak;\n\t}\n\n\t#Set DLG flag to track dialogs using
+    dialog2\n\tif (!is_method(\"REGISTER|SUBSCRIBE\"))\n\t\tsetflag(FLT_DIALOG);\n\n\tloose_route();\n#!ifdef
+    WITH_SBC\n\tif (ds_is_from_list(DISPATCHER_LIST_SBC)) {\n\t\tif (is_method(\"INVITE\"))
+    {\n\t\t\tif (is_present_hf(\"C-Params\")) {\n\t\t\t\tremove_hf(\"Contact\");\n\t\t\t\tremove_hf(\"C-Params\");\t\n\t\t\t\tappend_hf(\"Contact:
+    $ct;$hdr(C-Params)\\r\\n\");\n\t\t\t}\n\t\t\tif ($route_uri =~ \"sip:mo@.*\")
+    {\n\t\t\t\t# prepend mo as user for record route\n\t\t\t\t$avp(RR_CUSTOM_USER_AVP)=\"mo\";\n\t\t\t\tif
+    (is_present_hf(\"P-Route\")) {\n\t\t\t\t\t$du = $(hdr(P-Route){nameaddr.uri});\n\t\t\t\t\tremove_hf(\"P-Route\");\n\t\t\t\t\tappend_hf(\"Route:
+    $hdr(P-Route)\\r\\n\");\n\t\t\t\t}\n\t\t\t\tt_on_reply(\"SBC_GET_CPARAMS\");\n\t\t\t}\n\t\t\tif
+    ($route_uri =~ \"sip:mt@.*\") {\n\t\t\t\t$du = $ru;\n\t\t\t\thandle_ruri_alias();\n\t\t\t\tif
+    ($rc == 1) {\n\t\t\t\t\tsetflag(FLT_NAT);\n\t\t\t\t}\n\t\t\t\txlog(\"$$dP => $(dP{s.tolower})
+    ($du)\\n\");\n\t\t\t\t# prepend mo as user for record route\n\t\t\t\t$avp(RR_CUSTOM_USER_AVP)=\"mt\";\n\t\t\t\tif
+    ($(dP{s.tolower}) == \"tls\") {\n\t\t\t\t\troute(ENC_SRTP);\n\t\t\t\t} else if
+    ($(dP{s.tolower}) == \"ws\") {\n\t\t\t\t\t# Even WSS is incorrectly shown as WS\n\t\t\t\t\troute(ENC_WSS_RTP);\n\t\t\t\t}
+    else if ($(dP{s.tolower}) == \"wss\") {\n\t\t\t\t\troute(ENC_WSS_RTP);\n\t\t\t\t}
+    else {\n\t\t\t\t\troute(ENC_RTP);\n\t\t\t\t}\n\t\t\t\t# Handle NAT\n\t\t\t\troute(NATMANAGE);\n\t\t\t\t#
+    Handle Mobile Terminated requests\n\t\t\t\troute(MT);\t\n\t\t\t}\n\t\t}\n\t\tif
+    (is_method(\"REGISTER\")) {\n\t\t\tappend_hf(\"Path: <sip:term@$Ri:$Rp;lr>\\r\\n\");\n\t\t}\n\t}
+    else {\n#!endif\n\t\tif ($route_uri =~ \"sip:term@.*\") {\n#!ifdef WITH_SBC\n#!ifdef
+    WITH_SBC_CALL\n\t\t\tif (is_method(\"INVITE\")) {\n#!endif\n\t\t\t\tif (!strempty($(ct{tobody.params})))
+    {\n\t\t\t\t\tappend_hf(\"C-Params: $(ct{tobody.params})\\r\\n\");\n\t\t\t\t}\n\t\t\t\t\n\t\t\t\tappend_hf(\"SBC:
+    mt\\r\\n\");\n\t\t\t\t# Do some Round-Robin on the SBC's\n\t\t\t\tt_on_failure(\"SBC_failure\");\n\t\t\t\t#
+    Choose an SBC to send the call to:\n\t\t\t\tif (!ds_select_dst(DISPATCHER_LIST_SBC,
+    \"4\")) {\n\t\t\t\t\tsend_reply(\"503\", \"Service Unavailable (SBC failure)\");\n\t\t\t\t\texit;\n\t\t\t\t}\n#!ifdef
+    WITH_SBC_CALL\n\t\t\t}\n#!endif\n#!else\n\t\t\thandle_ruri_alias();\n\t\t\tif
+    ($dP == \"tls\") {\n\t\t\t\troute(ENC_SRTP);\n\t\t\t} else if ($dP == \"ws\")
+    {\n\t\t\t\troute(ENC_WS_RTP);\n\t\t\t} else if ($dP == \"wss\") {\n\t\t\t\troute(ENC_WSS_RTP);\n\t\t\t}
+    else {\n\t\t\t\troute(ENC_RTP);\n\t\t\t}\n\t\t\tif ($rc == 1) {\n\t\t\t\tsetflag(FLT_NAT);\n\t\t\t}\n\t\t\t#
+    Handle NAT\n\t\t\troute(NATMANAGE);\n\t\t\t# prepend mo as user for record route\n\t\t\t$avp(RR_CUSTOM_USER_AVP)=\"mt\";\n\t\t\troute(MT);\t\n#!endif\n\t\t}
+    else {\n\t\t\tforce_rport();\n\t\t\tif(is_method(\"INVITE|REGISTER\")) {\n\t\t\t\tadd_contact_alias();\n\t\t\t}\n\t\t\tsetflag(FLT_NAT);\n\n\t\t\tif
+    (is_method(\"REGISTER\")) {\n\t\t\t\troute(REGISTER);\n\t\t\t\texit;\n\t\t\t}\n\t\t\n\t\t\t#
+    prepend mo as user for record route\n\t\t\t$avp(RR_CUSTOM_USER_AVP)=\"mo\";\n\t\t\t#
+    Set Flag for MO:\n\t\t\tsetflag(FLT_MOBILE_ORIG);\n\t\t\t# Increase timer for
+    inbound requests, we may have to do failover:\n\t\t\tt_set_fr(120000, 30000);\n\t\t\troute(MO);\t\n\t\t\tif
+    (is_method(\"INVITE\")) {\n\t\t\t\t# SRTP in RTP übersetzen\n\t\t\t\tif ($pr ==
+    \"tls\") {\n\t\t\t\t\troute(DEC_SRTP);\n\t\t\t\t} else if ($pr == \"ws\") {\n\t\t\t\t\troute(DEC_WS_RTP);\n\t\t\t\t}
+    else if ($pr == \"wss\") {\n\t\t\t\t\troute(DEC_WSS_RTP);\n\t\t\t\t} else {\n\t\t\t\t\troute(DEC_RTP);\n\t\t\t\t}\n\t\t\t\t#
+    Handle NAT\n\t\t\t\troute(NATMANAGE);\n\t\t\t}\n#!ifdef WITH_SBC\n#!ifdef WITH_SBC_CALL\n\t\t\tif
+    (is_method(\"INVITE\")) {\n#!endif\n\t\t\t\t# Apply changes to this message\n\t\t\t\tmsg_apply_changes();\n\t\t\t\t#
+    Copy Route-Header:\n\t\t\t\tappend_hf(\"P-Route: $hdr(Route)\\r\\n\");\n\t\t\t\tif
+    (!strempty($(ct{tobody.params}))) {\n\t\t\t\t\tappend_hf(\"C-Params: $(ct{tobody.params})\\r\\n\");\n\t\t\t\t}\n\t\t\t\tappend_hf(\"SBC:
+    mo\\r\\n\");\n\t\t\t\t# Do some Round-Robin on the SBC's\n\t\t\t\tt_on_failure(\"SBC_failure\");\n\t\t\t\t#
+    Choose an SBC to send the call to:\n\t\t\t\tif (!ds_select_dst(DISPATCHER_LIST_SBC,
+    \"4\")) {\n\t\t\t\t\tsend_reply(\"503\", \"Service Unavailable (SBC failure)\");\n\t\t\t\t\texit;\n\t\t\t\t}\n#!endif\n#!ifdef
+    WITH_SBC_CALL\n\t\t\t}\n#!endif\n\t\t}\n#!ifdef WITH_SBC\n\t}\n#!endif\n\tif (is_method(\"INVITE|SUBSCRIBE\"))
+    {\n\t\t# record routing for dialog forming requests (in case they are routed)\n\t\trecord_route();\n\t}\n\n\t#
+    Forward request:\n\troute(RELAY);\n\texit;\n}\n\nroute[SBC_GET_CPARAMS] {\n\tif
+    (!strempty($(ct{tobody.params}))) {\n\t\tappend_hf(\"C-Params: $(ct{tobody.params})\\r\\n\");\n\t}\n}\n\n#
+    Per SIP request initial checks\nroute[REQINIT] {\n\t# Reply to OPTIONS:\n\tif
+    (is_method(\"OPTIONS\") && (uri==myself)) {\n\t\toptions_reply();\n\t\texit;\n\t}\n\n\t$var(used)
+    = 1 - ($stat(free_size) / $stat(total_size));\n\txlog(\"L_DBG\", \"Mem: Total
+    $stat(total_size), Free $stat(free_size) [$var(used)% used]\\n\");\n\tif ($var(used)
+    > 95) {\n\t\tsend_reply(\"503\", \"Server overloaded\");\n\t\texit;\n\t}\n\n\t#
+    Trace this message\n#!ifdef CAPTURE_NODE\n\tsip_trace();\t\n\tsetflag(FLT_CAPTURE);\n#!endif\n\n#!ifdef
+    WITH_ANTIFLOOD\n\t# flood dection from same IP and traffic ban for a while\n\t#
+    be sure you exclude checking trusted peers, such as pstn gateways\n\t# - local
+    host excluded (e.g., loop to self)\n\tif (!has_totag() && (src_ip!=myself) &&
+    !ds_is_from_list())\n\t{\n\t\tif($sht(ipban=>$si)!=$null)\n\t\t{\n\t\t\t# ip is
+    already blocked\n\t\t\txlog(\"request from blocked IP - $rm from $fu (IP:$si:$sp)\\n\");\n\t\t\txlog(\"Blocking
+    traffic from $si\\n\");\n\t\t\texit;\n\t\t}\n\t\tif (!pike_check_req()) {\n\t\t\txlog(\"L_ALERT\",\"ALERT:
+    pike blocking $rm from $fu (IP:$si:$sp, $ua)\\n\");\n\t\t\txlog(\"Blocking traffic
+    from $si\\n\");\n\t\t\t$sht(ipban=>$si) = 1;\n\t\t\texit;\n\t\t}\n\t}\n\tif ((uri
+    == myself) && is_method(\"INVITE|REGISTER\")) {\n\t\txlog(\"L_ALERT\",\"ALERT:
+    Request to myself: $ru from $fu (IP:$si:$sp, $ua), Blocking\\n\");\n\t\txlog(\"Blocking
+    traffic from $si\\n\");\n\t\t$sht(ipban=>$si) = 1;\n\t\texit;\n\t}\n#!endif\n\n\tif
+    (!mf_process_maxfwd_header(\"10\")) {\n\t\tsl_send_reply(\"483\",\"Too Many Hops\");\n\t\texit;\n\t}\n\n\tif(!sanity_check(\"1511\",
+    \"7\")) {\n\t\txlog(\"Malformed SIP message from $si:$sp\\n\");\n\t\texit;\n\t}\n\n\t#
+    Check for shutdown mode:\n\tif (!has_totag() && ($sel(cfg_get.system.shutdownmode)
+    > 0)) {\n\t\tsend_reply(\"503\", \"Server shutting down\");\n\t\texit;\n\t}\n\n\t#
+    Ignore Re-Transmits:\n\tif (t_lookup_request()) {\n\t\texit;\n\t}\n\n\tif (is_method(\"INVITE|REGISTER\"))
+    {\n\t\tsend_reply(\"100\", \"Trying\");\n\t}\t\n}\n\nroute[RELAY] {\n\tif (!t_relay())
+    {\n\t\tsl_reply_error();\n\t}\n\texit;\n}\n\n# Handle requests within SIP dialogs\nroute[WITHINDLG]
+    {\n\tif (has_totag()) {\n\t\txnotice(\"Within DLG\\n\");\n\t\t# sequential request
+    withing a dialog should\n\t\t# take the path determined by record-routing\n\t\tif
+    (loose_route()) {\n\t\t\txnotice(\"Within loose route\\n\");\n\t\t\tif(!isdsturiset())
+    {\n\t\t\t\thandle_ruri_alias();\n\t\t\t\t#if ($rc == 1) {\n\t\t\t\t#\t$ru = \"sip:\"
+    + $rU + \"@\" + $dd + \":\" + $dp + \";transport=\" + $rP;\n\t\t\t\t#}\n\t\t\t}\n\n\t\t\tif
+    ($route_uri =~ \"sip:mt@.*\") {\n\t\t\t\troute(MT_indialog);\n\t\t\t} else {\n\t\t\t\troute(MO_indialog);\n\t\t\t}\n\n\t\t\t#
+    Handle NAT\n\t\t\troute(NATMANAGE);\n\n\t\t\troute(RELAY);\n\t\t\texit;\n\t\t}\n\t\tif
+    ( is_method(\"ACK\") ) {\n\t\t\txlog(\"Contact of Reply: $T_rpl($ct)\\n\");\n\t\t\tif
+    ( t_check_trans() ) {\n\t\t\t\t# no loose-route, but stateful ACK;\n\t\t\t\t#
+    must be an ACK after a 487\n\t\t\t\t# or e.g. 404 from upstream server\n\t\t\t\tt_relay();\n\t\t\t\texit;\n\t\t\t}
+    else {\n\t\t\t\t# ACK without matching transaction ... ignore and discard\n\t\t\t\texit;\n\t\t\t}\n\t\t}\n\t\tsl_send_reply(\"404\",\"Not
+    here\");\n\t\texit;\n\t}\n}\n\n######################################################################\n#
+    Negative replies to REGISTER requests:\n######################################################################\nfailure_route[SBC_failure]
+    {\n#!ifdef WITH_IPBLOCK\n\tif (is_method(\"REGISTER\") && !ds_is_from_list())
+    {\n\t\tif (t_check_status(\"403|[5-6][0-9][0-9]\")) {\n\t\t\tif ($sht(failedauth=>$si)
+    != $null)\n\t\t\t\t$sht(failedauth=>$si) = $sht(failedauth=>$si) + 1;\n\t\t\telse\n\t\t\t\t$sht(failedauth=>$si)
+    = 1;\n\t\t\tif ($sht(failedauth=>$si) > 10) {\n\t\t\t\txlog(\"L_ALERT\",\"ALERT:
+    blocking $rm from $fu (IP:$si:$sp), more than 5 failed auth requests!\\n\");\n\t\t\t\txlog(\"Blocking
+    traffic from $si\\n\");\n\t\t\t\t$sht(ipban=>$si) = 1;\n\t\t\t}\n\t\t}\n\t}\n#!endif\n\t#
+    Choose another gateway, in case we\n\t# - get a local generated \"408\"\n\t# -
+    receive a 5xx or 6xx reply from the proxy.\n\tif (t_branch_timeout() || t_check_status(\"[5-6]..\"))
+    {\n\t\tif (ds_next_dst()) {\n\t\t\t# Do Failover in case problems:\t\t\n\t\t\tt_on_failure(\"SBC_failure\");\n\t\t\tt_relay();\n\t\t}
+    else {\n\t\t\t# Add a header, to indicate the phone should try again in 30 seconds.\n\t\t\tappend_hf(\"Retry-After:
+    30\\r\\n\");\n\t\t\tsend_reply(\"504\", \"Server Time-Out\");\n\t\t}\n\t\texit;\n\t}\n}\n\n#
+    Notify Route:                                                     #\n#####################################################################\nroute[NOTIFY]\n{\n\txlog(\"L_DBG\",
+    \"IMS: INSIDE NOTIFY\\n\");\n\tif (reginfo_handle_notify(\"pcscf_location\"))
+    {\n\t\tsend_reply(\"200\",\"OK - P-CSCF processed notification\");\n\t\tbreak;\n\t}
+    else {\n\t\tt_reply(\"500\",\"Error encountered while processing notification\");\n\t\tbreak;\n\t}\n}\n\n#!ifdef
+    WITH_NATPING\n# NATPING Route:                                                    #\n#####################################################################\nroute[NATPING]
+    {\n\troute(preload_pcscf);\n\n\tsht_lock(\"natping=>natpinglock\");\n\tsht_iterator_start(\"nat_iterator\",
+    \"natping\");\n\twhile(sht_iterator_next(\"nat_iterator\")) {\n\t\txnotice(\"OPTIONS
+    to $shtitval(nat_iterator) via $shtitkey(nat_iterator)...\\n\");\n\t\t$uac_req(method)
+    = \"OPTIONS\";\n\t\t$uac_req(ruri) = $shtitval(nat_iterator);\n\t\t$uac_req(furi)
+    = PCSCF_URL;\n\t\t$uac_req(sock) = $sht(natpingfrom=>$shtitkey(nat_iterator));\n\t\t$uac_req(turi)
+    = $shtitval(nat_iterator);\n\t\t$uac_req(ouri) = $shtitkey(nat_iterator); \n\t\t$uac_req(evroute)
+    = 1;\n\t\tuac_req_send();\t\n\t}\n\tsht_iterator_end(\"nat_iterator\");\n\tsht_unlock(\"natping=>natpinglock\");\n}\n\nevent_route[uac:reply]
+    {\n##!ifdef WITH_DEBUG\n\txnotice(\"request sent to $uac_req(ruri) completed with
+    code: $uac_req(evcode), Type $uac_req(evtype)\\n\");\n##!endif\n\tif (($uac_req(evtype)
+    != 1) || ($uac_req(evcode) != 200)) {\n\t\tif ($sht(natpingfail=>$uac_req(ouri))
+    == $null) {\n\t\t\t$sht(natpingfail=>$uac_req(ouri)) = 1;\n\t\t} else {\n\t\t\t$sht(natpingfail=>$uac_req(ouri))
+    = $sht(natpingfail=>$uac_req(ouri)) + 1;\n\t\t}\n\t\txlog(\"  request sent to
+    $uac_req(ruri): Fail Counter is $sht(natpingfail=>$uac_req(ouri))\\n\");\n\t\tif
+    ($sht(natpingfail=>$uac_req(ouri)) > 10) {\n\t\t\tif ($(uac_req(ouri){uri.transport})
+    == \"tcp\") {\n\t\t\t\t$var(alias) = \"alias=\"+$(uac_req(ouri){uri.host})+\"~\"+$(uac_req(ouri){uri.port})+\"~2\";\n\t\t\t}
+    else if ($(uac_req(ouri){uri.transport}) == \"tls\") {\n\t\t\t\t$var(alias) =
+    \"alias=\"+$(uac_req(ouri){uri.host})+\"~\"+$(uac_req(ouri){uri.port})+\"~3\";\n\t\t\t}
+    else {\n\t\t\t\t$var(alias) = \"alias=\"+$(uac_req(ouri){uri.host})+\"~\"+$(uac_req(ouri){uri.port})+\"~1\";\n\t\t\t}\n\t\t\txlog(\"
+    \ Unregistering $uac_req(ruri);$var(alias)\\n\");\n\t\t\tsetdebug(\"9\");\n#!ifdef
+    WITH_IPSEC\n\t\t\tipsec_destroy_by_contact(\"pcscf_location\", \"$uac_req(ruri);$var(alias)\",
+    \"$(uac_req(ouri){uri.host})\", \"$(uac_req(ouri){uri.port})\");\n#!endif\n\t\t\tpcscf_unregister(\"pcscf_location\",
+    \"$uac_req(ruri);$var(alias)\", \"$(uac_req(ouri){uri.host})\", \"$(uac_req(ouri){uri.port})\");\n\t\t\tresetdebug();\n\t\t\tsht_lock(\"natping=>natpinglock\");\n\t\t\t$sht(natping=>$uac_req(ouri))
+    = $null;\n\t\t\tsht_unlock(\"natping=>natpinglock\");\n\t\t\t$sht(natpingfail=>$uac_req(ouri))
+    = $null;\n\n\t\t\tsht_lock(\"natpingfrom=>natpingfromlock\");\n\t\t\t$sht(natpingfrom=>$uac_req(ouri))
+    = $null;\n\t\t\tsht_unlock(\"natpingfrom=>natpingfromlock\");\n\t\t\t$sht(natpingfail=>$uac_req(ouri))
+    = $null;\n\t\t}\n\t} else {\n\t\t$sht(natpingfail=>$uac_req(ouri)) = $null;\n\t}\n}\n\nevent_route[htable:expired:natping]
+    {\n\txlog(\"natping record expired $shtrecord(key) => $shtrecord(value)\\n\");\n}\n\nevent_route[htable:mod-init]
+    {\n\txlog(\"event_route[htable:mod-init] \\n\");\n}\n\nroute[preload_pcscf] {\n\tif
+    ($shv(preload_pcscf) == 1) return;\n\t$shv(preload_pcscf) = 1;\n\n\tsql_query(\"pcscf\",
+    \"select aor, received, received_port, received_proto from pcscf_location;\",
+    \"resultset\");\n\txlog(\"L_INFO\", \"Preloading NAT-PING. Rows: $dbr(resultset=>rows)\\n\");\n\tif($dbr(resultset=>rows)>0)
+    {\n\t\t$var(i) = 0;\n\t\twhile($var(i) < $dbr(resultset=>rows)) {\n\t\t\t$var(ouri)
+    = \"sip:\"+$dbr(resultset=>[$var(i),1])+\":\"+$dbr(resultset=>[$var(i),2]);\n\t\t\tif
+    ($dbr(resultset=>[$var(i),3]) == 2) {\n\t\t\t\t$var(ouri) = $var(ouri)+\";transport=tcp\";\n\t\t\t}
+    else if ($dbr(resultset=>[$var(i),3]) == 3) {\n\t\t\t\t$var(ouri) = $var(ouri)+\";transport=tls\";\n\t\t\t}\n\t\t\t$var(noalias)
+    = $(dbr(resultset=>[$var(i),0]){re.subst,/^(.*);alias=.*/\\1/}{nameaddr.uri});\n\t\t\t#
+    xlog(\"$$var(noalias) => $var(noalias) (via $var(ouri))\\n\");\n\t\t\tsht_lock(\"natping=>natpinglock\");\n\t\t\t$sht(natping=>$var(ouri))
+    = $var(noalias);\n\t\t\tsht_unlock(\"natping=>natpinglock\");\n\t\t\t$var(i) =
+    $var(i) + 1;\n\t\t}\n\t}\n\tsql_result_free(\"resultset\");\n}\n#!endif\n\n#!ifdef
+    WITH_N5\n\n# 5G N5 HTTP2 Server routing script basic code\nevent_route[nghttp2:request]
+    {\n\txinfo(\"request: $nghttp2(method) - url: $nghttp2(path) - data: [$nghttp2(data)]\\n\");\n\n\t#
+    Check if the requested URL is /nf-status-notify\n\tif ($nghttp2(path) == \"/nf-status-notify\")
+    {\n\t\tnghttp2_reply_header(\"Content-Type\", \"text/html\");\n\t\tnghttp2_reply_header(\"Server:\",
+    \"AF\");\n\t\tnghttp2_reply(\"200\", \"<html><body>PCF registered at PCSCF</body></html>\");\n\t}
+    else if ($nghttp2(path) == \"/terminate\") {\n\t\tnghttp2_reply_header(\"accept\",
+    \"application/json\");\n\t\tnghttp2_reply_header(\"accept\", \"application/problem+json\");\n\t\tnghttp2_reply_header(\"Content-Type\",
+    \"application/json\");\n\t\tnghttp2_reply_header(\"Server\", \"AF\");\n\t\tnghttp2_reply(\"204\",
+    \"No Content\");\n\t} else {\n\t\t# Optionally handle other URLs or do nothing\n\t\tnghttp2_reply_header(\"accept\",
+    \"application/json\");\n\t\tnghttp2_reply_header(\"accept\", \"application/problem+json\");\n\t\tnghttp2_reply_header(\"Content-Type\",
+    \"application/json\");\n\t\tnghttp2_reply_header(\"Server\", \"AF\");\n\t\tnghttp2_reply(\"404\",
+    \"Not Found\");\n\t}\n}\n\nroute[NRF_NFM] {\n\tif ($var(n5_hb_fail_count) > 5)
+    {\n\t\txlog(\"L_ERR\", \"PCSCF NF no longer registered at SCP. Re-attempting registration!!\\n\");\n\t\t$var(n5_initalized)
+    = 0;\n\t}\n\n\t$var(time_now) = $_s($timef(%a, %d %b %Y %H:%M:%S %Z));\n\n\t#
+    TODO: Send at heartbeat intervals received in reponse to NF registration  \n\tif
+    ($var(n5_initalized) == 1) {\n\t\t# Send Heartbeat\n\t\t$var(nf_hb_headers) =
+    \"content-type: application/json-patch+json\\r\\n\";\n\t\t$var(nf_hb_headers)
+    = $var(nf_hb_headers) + \"accept: application/json,application/problem+json\\r\\n\";\n\t\t$var(nf_hb_headers)
+    = $var(nf_hb_headers) + \"3gpp-sbi-discovery-target-nf-type: NRF\\r\\n\";\n\t\t$var(nf_hb_headers)
+    = $var(nf_hb_headers) + \"3gpp-sbi-max-rsp-time: 10000\\r\\n\";\n\t\t$var(nf_hb_headers)
+    = $var(nf_hb_headers) + \"3gpp-sbi-discovery-service-names: nnrf-nfm\\r\\n\";\n\t\t$var(nf_hb_headers)
+    = $var(nf_hb_headers) + \"3gpp-sbi-sender-timestamp: \" + $var(time_now);\n\n\t\t$var(nf_hb_json_body)
+    ='[]';\n\t\t$var(nf_hb_body) = '{\n\t\t\t\"op\": \"replace\",\n\t\t\t\"path\":
+    \"/nfStatus\",\n\t\t\t\"value\": \"REGISTERED\"\n\t\t}';\n\t\tjansson_append(\"obj\",
+    \"\", $var(nf_hb_body), \"$var(nf_hb_json_body)\");\n\t\t$var(nf_hb_body) = '{\n\t\t\t\"op\":
+    \"replace\",\n\t\t\t\"path\": \"/load\",\n\t\t\t\"value\": 0\n\t\t}';\n\t\tjansson_append(\"obj\",
+    \"\", $var(nf_hb_body), \"$var(nf_hb_json_body)\");\n\n\t\thttp_client_request_v2pk(\"PATCH\",
+    \"http://SCP_BIND_IP:SCP_BIND_PORT/nnrf-nfm/v1/nf-instances/$var(pcscf_uuid)\",
+    \"$var(nf_hb_json_body)\", \"$var(nf_hb_headers)\", \"$var(nf_hb_result)\");\n\t\tswitch
+    ($rc) {\n\t\t\tcase 204:\n\t\t\t\t$var(n5_hb_fail_count) = 0;\n\t\t\t\tbreak;\n\t\t\tdefault:\n\t\t\t\t$var(n5_hb_fail_count)
+    = $var(n5_hb_fail_count) + 1;\n\t\t\t\treturn;\n\t\t}\n\t\treturn;\n\t}\n\n\t#
+    Generate UUID for PCSCF\n\t$var(pcscf_uuid) = $uuid(g);\n\n\t# Register NF\n\t$var(nf_reg_headers)
+    = \"content-type: application/json\\r\\n\";\n\t$var(nf_reg_headers) = $var(nf_reg_headers)
+    + \"accept: application/json,application/problem+json\\r\\n\";\n\t$var(nf_reg_headers)
+    = $var(nf_reg_headers) + \"3gpp-sbi-discovery-target-nf-type: NRF\\r\\n\";\n\t$var(nf_reg_headers)
+    = $var(nf_reg_headers) + \"3gpp-sbi-max-rsp-time: 10000\\r\\n\";\n\t$var(nf_reg_headers)
+    = $var(nf_reg_headers) + \"3gpp-sbi-discovery-service-names: nnrf-nfm\\r\\n\";\n\t$var(nf_reg_headers)
+    = $var(nf_reg_headers) + \"3gpp-sbi-sender-timestamp: \" + $var(time_now);\n\n\t$var(nf_reg_body)
+    = '{\n\t\t\"nfInstanceId\": \"PCSCF_UUID\",\n\t\t\"nfType\":   \"AF\",\n\t\t\"nfStatus\":
+    \"REGISTERED\",\n\t\t\"ipv4Addresses\": [\"N5_BIND_IP\"],\n\t\t\"allowedNfTypes\":
+    [\"SCP\", \"PCF\"],\n\t\t\"priority\": 0,\n\t\t\"capacity\": 100,\n\t\t\"load\":
+    0,\n\t\t\"nfServiceList\": {\n\t\t\t\"PCSCF_UUID\": {\n\t\t\t\t\"serviceInstanceId\":
+    \"PCSCF_UUID\",\n\t\t\t\t\"serviceName\": \"npcf-policyauthorization\",\n\t\t\t\t\"versions\":
+    [\n\t\t\t\t\t{\n\t\t\t\t\t\t\"apiVersionInUri\": \"v2\",\n\t\t\t\t\t\t\"apiFullVersion\":
+    \"2.0.0\"\n\t\t\t\t\t}\n\t\t\t\t],\n\t\t\t\t\"scheme\": \"http\",\n\t\t\t\t\"nfServiceStatus\":
+    \"REGISTERED\",\n\t\t\t\t\"ipEndPoints\": [\n\t\t\t\t\t{\n\t\t\t\t\t\t\"ipv4Address\":
+    \"N5_BIND_IP\",\n\t\t\t\t\t\t\"port\": N5_BIND_PORT\n\t\t\t\t\t}\n\t\t\t\t],\n\t\t\t\t\"allowedNfTypes\":
+    [\n\t\t\t\t\t\"PCF\"\n\t\t\t\t],\n\t\t\t\t\"priority\": 0,\n\t\t\t\t\"capacity\":
+    100,\n\t\t\t\t\"load\": 0\n\t\t\t}\n\t\t},\n\t\t\"nfProfileChangesSupportInd\":
+    true\n\t}';\n\t$var(nf_reg_body) = $(var(nf_reg_body){re.subst,/PCSCF_UUID/$var(pcscf_uuid)/g});\n\tjansson_append(\"obj\",
+    \"\", \"$var(nf_reg_body)\", \"$var(nf_reg_json_body)\");\n\n\thttp_client_request_v2pk(\"PUT\",
+    \"http://SCP_BIND_IP:SCP_BIND_PORT/nnrf-nfm/v1/nf-instances/$var(pcscf_uuid)\",
+    \"$var(nf_reg_json_body)\", \"$var(nf_reg_headers)\", \"$var(nf_reg_result)\");\n\tswitch
+    ($rc) {\n\t\tcase 201:\n\t\t\txlog(\"L_INFO\", \"P-CSCF NF registered successfully
+    at SCP\\n\");\n\t\t\t$var(n5_initalized) = 1;\n\t\t\t$var(n5_hb_fail_count) =
+    0;\n\t\t\troute(NRF_NFM_SUBSCRIBE_PCF);\n\t\t\tbreak;\n\t\tdefault:\n\t\t\txlog(\"L_ERR\",
+    \"P-CSCF NF failed to register at SCP with code=$rc\\n\");\n\t\t\treturn;\n\t}\n}\n\nroute[NRF_NFM_SUBSCRIBE_PCF]
+    {\n\t# Subscribe to PCF NF registration notification\n\t$var(time_now) = $_s($timef(%a,
+    %d %b %Y %H:%M:%S %Z));\n\t$var(pcf_subc_headers) = \"content-type: application/json\\r\\n\";\n\t$var(pcf_subc_headers)
+    = $var(pcf_subc_headers) + \"accept: application/json,application/problem+json\\r\\n\";\n\t$var(pcf_subc_headers)
+    = $var(pcf_subc_headers) + \"3gpp-sbi-discovery-target-nf-type: NRF\\r\\n\";\n\t$var(pcf_subc_headers)
+    = $var(pcf_subc_headers) + \"3gpp-sbi-callback: Nnrf_NFManagement_NFStatusNotify\\r\\n\";\n\t$var(pcf_subc_headers)
+    = $var(pcf_subc_headers) + \"3gpp-sbi-max-rsp-time: 10000\\r\\n\";\n\t$var(pcf_subc_headers)
+    = $var(pcf_subc_headers) + \"3gpp-sbi-discovery-service-names: nnrf-nfm\\r\\n\";\n\t$var(pcf_subc_headers)
+    = $var(pcf_subc_headers) + \"3gpp-sbi-sender-timestamp: \" + $var(time_now);\n\n\t$var(pcf_subc_body)
+    = '{\n\t\t\"nfStatusNotificationUri\": \"http://N5_BIND_IP:N5_BIND_PORT/nnrf-nfm/v1/nf-status-notify\",\n\t\t\"reqNfInstanceId\":
+    \"PCSCF_UUID\",\n\t\t\"subscrCond\": {\n\t\t\t\"nfType\": \"PCF\"\n\t\t},\n\t\t\"reqNfType\":
+    \"AF\",\n\t\t\"requesterFeatures\": \"1\"\n\t}';\n\t$var(pcf_subc_body) = $(var(pcf_subc_body){re.subst,/PCSCF_UUID/$var(pcscf_uuid)/g});\n\tjansson_append(\"obj\",
+    \"\", \"$var(pcf_subc_body)\", \"$var(pcf_subc_json_body)\");\n\n\thttp_client_request_v2pk(\"POST\",
+    \"http://SCP_BIND_IP:SCP_BIND_PORT/nnrf-nfm/v1/subscriptions\", \"$var(pcf_subc_json_body)\",
+    \"$var(pcf_subc_headers)\", \"$var(pcf_subc_result)\");\n\tswitch ($rc) {\n\t\tcase
+    201:\n\t\t\txlog(\"L_INFO\", \"P-CSCF NF subscribed for PCF NF registration notification\\n\");\n\t\t\tbreak;\n\t\tdefault:\n\t\t\txlog(\"L_ERR\",
+    \"P-CSCF NF failed to subscribe for PCF NF registration notification\\n\");\n\t\t\treturn;\n\t}\n}\n#!endif\n\n#!ifdef
+    WITH_XMLRPC\ninclude_file \"route/xmlrpc.cfg\"\n#!endif\n#!ifdef WITH_WEBSOCKET\ninclude_file
+    \"route/websocket.cfg\"\n#!endif\ninclude_file \"route/register.cfg\"\ninclude_file
+    \"route/rtp.cfg\"\ninclude_file \"route/mo.cfg\"\ninclude_file \"route/mt.cfg\"\n"
+  pcscf.cfg: "# IP-Adress for incoming SIP-Traffic, in the following format:\n\n#
+    SIP / UDP\nlisten=udp:PCSCF_IP:5060\n#listen=udp:PCSCF_IP:5060 advertise PCSCF_PUB_IP:5060\n#
+    SIP / TCP\nlisten=tcp:PCSCF_IP:5060\n#listen=tcp:PCSCF_IP:5060 advertise PCSCF_PUB_IP:5060\n#
+    SIP / TCP/TLS\n#listen=tls:PCSCF_IP:5061\n\n# IPSEC / UDP\n#!define IPSEC_LISTEN_ADDR
+    \"PCSCF_IP\"\n##!define IPSEC_LISTEN_ADDR \"PCSCF_PUB_IP\"\n#!define IPSEC_CLIENT_PORT
+    5100\n#!define IPSEC_SERVER_PORT 6100\n#!define IPSEC_MAX_CONN 10\n\n# Value:
+    1 for true and 0 for false\n#!define IPSEC_DELETE_UNUSED_TUNNELS 1\n\n# Delay
+    in seconds to delete contact from registrar\n#!define CONTACT_DELETE_DELAY 10\n\n#
+    Logical OR of following flags:\n# - IPSEC_SEND_FORCE_SOCKET 1\n# - IPSEC_SETDSTURI_FULL
+    128\n# - IPSEC_FORWARD_USEVIA 256\n# - IPSEC_FORWARD_TRYTCP 512\n#!define IPSEC_FORWARD_FLAGS
+    897\n\n#!define RX_IMS_REG_DIALOG_DIRECTION 3\n\n# IP used in Rx_AAR_Register
+    - IP of this P-CSCF, to be used in the flow for the AF-signaling\n#!define RX_AF_SIGNALING_IP
+    \"PCSCF_IP\"\n# Uncomment the below line only when UE is behind double NAT (e.g.
+    VoIP calling over WiFi/ CN behind a NAT)\n##!define RX_AF_SIGNALING_IP \"PCSCF_PUB_IP\"\n\n\n#
+    IP and Port for incoming requests over N5 from 5G Core\n#!substdef \"/N5_BIND_IP/PCSCF_IP/g\"\n#!substdef
+    \"/N5_BIND_PORT/7777/g\"\n\n# SCP IP and Port for NF registration and heartbeat\n#!substdef
+    \"/SCP_BIND_IP/SCP_IP/g\"\n#!substdef \"/SCP_BIND_PORT/7777/g\"\n\nalias=pcscf.IMS_DOMAIN\n\n#!define
+    MY_WS_PORT 80\n#!define MY_WSS_PORT 443\n\n#!define PCSCF_URL \"sip:pcscf.IMS_DOMAIN:5060\"\n\n#!define
+    TCP_PROCESSES 8\n\n# Maximum lifetime of a subscription in seconds (same is advertised
+    to UE)\n#!substdef \"/UE_SUBSCRIPTION_EXPIRES/SUBSCRIPTION_EXPIRES_ENV/g\"\n\n#!subst
+    \"/NETWORKNAME/IMS_DOMAIN/g\"\n#!subst \"/HOSTNAME/pcscf.IMS_DOMAIN/g\"\n#!subst
+    \"/PCRF_REALM/EPC_DOMAIN/g\"\n\n# SIP-Address of capturing node, if not set, capturing
+    is disabled.\n##!define CAPTURE_NODE \"sip:127.0.0.1:9060\"\n\n# Allowed IPs for
+    XML-RPC-Queries\n##!define XMLRPC_WHITELIST_1 \"127.0.0.1\"\n##!define XMLRPC_WHITELIST_2
+    \"127.0.0.1\"\n##!define XMLRPC_WHITELIST_3 \"127.0.0.1\"\n\n# Databases:\n#!define
+    DB_URL \"mysql://pcscf:heslo@MYSQL_IP/pcscf\"\n##!define DB_URL2 \"con2=>mysql://pcscf:heslo@MYSQL_IP/pcscf\"\n\n#!define
+    SQLOPS_DBURL \"pcscf=>mysql://pcscf:heslo@MYSQL_IP/pcscf\"\n\n#! Optional: Server-URL
+    for Websocket-Requests\n##!define WEBSOCKET_WEBSERVER \"phone.ng-voice.com\"\n\n##!define
+    TRF_FUNCTION \"trf.IMS_DOMAIN\"\n\n#\n# Several features can be enabled using
+    '#!define WITH_FEATURE' directives:\n#\n# *** To run in debug mode: \n#     -
+    define WITH_DEBUG\n#\n# *** To enable nat traversal execute:\n#     - define WITH_NAT\n#
+    \    - define the connection to the RTP-Proxy: RTPPROXY_ADDRESS\n#\n# *** To force
+    alls calls through the RTP-Proxy\n#     - this will automagically enable NAT-Traversal\n#
+    \    - define FORCE_RTPRELAY\n#\n# *** To enable IPv4/IPv6 Translation (RTPProxy)\n#
+    \    - this will automagically enable NAT-Traversal\n#     - define WITH_RTPIPV4\n#\n#
+    *** To enable TCP support execute:\n#     - define WITH_TCP\n#\n# *** To enable
+    TLS support execute:\n#     - adjust CFGDIR/tls.cfg as needed\n#     - define
+    WITH_TLS\n#     - this will automagically enable TCP\n#\n# *** To enable XMLRPC
+    support execute:\n#     - define WITH_XMLRPC\n#     - this will automagically
+    enable TCP\n#\n# *** To enable anti-flood detection execute:\n#     - adjust pike
+    and htable=>ipban settings as needed (default is\n#       block if more than 16
+    requests in 2 seconds and ban for 300 seconds)\n#     - define WITH_ANTIFLOOD\n#\n#
+    *** To enable the Rx-Interface:\n#     - Configure Rx-Diameter-Interface in pcscf.xml\n#
+    \    - define WITH_RX\n#\n# *** To enable a Homer SIP-Capter-Node:\n#     - define
+    CAPTURE_NODE with a proper address\n#\n# *** To enable support for the SEMS-SBC\n#
+    \    - define WITH_SBC\n#     - configure dispatcher-list with a set of SBC's\n\n#\n#
+    Enabled Features for this host:\n##!define WITH_DEBUG\n##!define WITH_DEBUG_TRACE\n#!define
+    WITH_NAT\n##!define WITH_NATPING\n#!define FORCE_RTPRELAY\n##!define WITH_TLS\n##!define
+    WITH_XMLRPC\n##!define WITH_IPBLOCK\n##!define WITH_ANTIFLOOD\n#!define WITH_RX\n##!define
+    WITH_N5\n#!define WITH_TCP\n##!define WITH_RTPIPV4\n##!define WITH_SBC\n##!define
+    WITH_SBC_CALL\n##!define WITH_REGINFO\n##!define WITH_RTPPING\n##!define WITH_WEBSOCKET\n#!define
+    WITH_IPSEC\n#!define WITH_IMS_HDR_CACHE\n#!define WITH_PING_UDP\n#!define WITH_PING_TCP\n"
+  pcscf.xml: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DiameterPeer \n\tFQDN=\"pcscf.IMS_DOMAIN\"\n\tRealm=\"IMS_DOMAIN\"\n\tVendor_Id=\"10415\"\n\tProduct_Name=\"CDiameterPeer\"\n\tAcceptUnknownPeers=\"1\"\n\tDropUnknownOnDisconnect=\"1\"\n\tTc=\"30\"\n\tWorkers=\"4\"\n\tQueueLength=\"8\"\n\tTransactionTimeout=\"5\"\n\tSessionsHashSize=\"128\"\n\tDefaultAuthSessionTimeout=\"SUBSCRIPTION_EXPIRES_ENV\"\n\tMaxAuthSessionTimeout=\"SUBSCRIPTION_EXPIRES_ENV\"\n>\n\t<Peer
+    FQDN=\"pcrf.EPC_DOMAIN\" Realm=\"EPC_DOMAIN\" port=\"PCRF_BIND_PORT\"/> \n\n\t<Acceptor
+    port=\"PCSCF_BIND_PORT\" bind=\"PCSCF_IP\"/>\n\n\t<Auth id=\"16777236\" vendor=\"10415\"/>
+    <!-- 3GPP Rx -->\n\t<Auth id=\"16777236\" vendor=\"0\"/> <!-- 3GPP Rx -->\n\n\t<DefaultRoute
+    FQDN=\"pcrf.EPC_DOMAIN\" metric=\"10\"/>\n\n</DiameterPeer>\n"
+  pcscf_init.sh: "#!/bin/bash\n\n# BSD 2-Clause License\n\n# Copyright (c) 2020-2025,
+    Supreeth Herle\n# All rights reserved.\n\n# Redistribution and use in source and
+    binary forms, with or without\n# modification, are permitted provided that the
+    following conditions are met:\n\n# 1. Redistributions of source code must retain
+    the above copyright notice, this\n#    list of conditions and the following disclaimer.\n\n#
+    2. Redistributions in binary form must reproduce the above copyright notice,\n#
+    \   this list of conditions and the following disclaimer in the documentation\n#
+    \   and/or other materials provided with the distribution.\n\n# THIS SOFTWARE
+    IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\n# AND ANY EXPRESS
+    OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\n# IMPLIED WARRANTIES
+    OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n# DISCLAIMED. IN
+    NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\n# FOR ANY DIRECT,
+    INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\n# DAMAGES (INCLUDING,
+    BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\n# SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\n# CAUSED AND ON ANY THEORY
+    OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\n# OR TORT (INCLUDING NEGLIGENCE
+    OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\n# OF THIS SOFTWARE, EVEN IF ADVISED
+    OF THE POSSIBILITY OF SUCH DAMAGE.\n\nsh -c \"echo 1 > /proc/sys/net/ipv4/ip_nonlocal_bind\"\nsh
+    -c \"echo 1 > /proc/sys/net/ipv6/ip_nonlocal_bind\"\n\n[ ${#MNC} == 3 ] && EPC_DOMAIN=\"epc.mnc${MNC}.mcc${MCC}.3gppnetwork.org\"
+    || EPC_DOMAIN=\"epc.mnc0${MNC}.mcc${MCC}.3gppnetwork.org\"\n[ ${#MNC} == 3 ] &&
+    IMS_DOMAIN=\"ims.mnc${MNC}.mcc${MCC}.3gppnetwork.org\" || IMS_DOMAIN=\"ims.mnc0${MNC}.mcc${MCC}.3gppnetwork.org\"\n\nmkdir
+    -p /etc/kamailio_pcscf\ncp /mnt/pcscf/pcscf.cfg /etc/kamailio_pcscf\ncp /mnt/pcscf/pcscf.xml
+    /etc/kamailio_pcscf\ncp /mnt/pcscf/kamailio_pcscf.cfg /etc/kamailio_pcscf\ncp
+    -r /mnt/pcscf/route /etc/kamailio_pcscf\ncp -r /mnt/pcscf/sems /etc/kamailio_pcscf\ncp
+    /mnt/pcscf/tls.cfg /etc/kamailio_pcscf\ncp /mnt/pcscf/dispatcher.list /etc/kamailio_pcscf\n\nwhile
+    ! mysqladmin ping -h ${MYSQL_IP} --silent; do\n\tsleep 5;\ndone\n\n# Sleep until
+    permissions are set\nsleep 10;\n\n# Create PCSCF database, populate tables and
+    grant privileges\nif [[ -z \"`mysql -u root -h ${MYSQL_IP} -qfsBe \"SELECT SCHEMA_NAME
+    FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='pcscf'\" 2>&1`\" ]];\nthen\n\tmysql
+    -u root -h ${MYSQL_IP} -e \"create database pcscf;\"\n\tmysql -u root -h ${MYSQL_IP}
+    pcscf < /usr/local/src/kamailio/utils/kamctl/mysql/standard-create.sql\n\tmysql
+    -u root -h ${MYSQL_IP} pcscf < /usr/local/src/kamailio/utils/kamctl/mysql/presence-create.sql\n\tmysql
+    -u root -h ${MYSQL_IP} pcscf < /usr/local/src/kamailio/utils/kamctl/mysql/ims_usrloc_pcscf-create.sql\n\tmysql
+    -u root -h ${MYSQL_IP} pcscf < /usr/local/src/kamailio/utils/kamctl/mysql/ims_dialog-create.sql\n\tPCSCF_USER_EXISTS=`mysql
+    -u root -h ${MYSQL_IP} -s -N -e \"SELECT EXISTS(SELECT 1 FROM mysql.user WHERE
+    User = 'pcscf' AND Host = '%')\"`\n\tif [[ \"$PCSCF_USER_EXISTS\" == 0 ]]\n\tthen\n\t\tmysql
+    -u root -h ${MYSQL_IP} -e \"CREATE USER 'pcscf'@'%' IDENTIFIED WITH mysql_native_password
+    BY 'heslo'\";\n\t\tmysql -u root -h ${MYSQL_IP} -e \"CREATE USER 'pcscf'@'$PCSCF_IP'
+    IDENTIFIED WITH mysql_native_password BY 'heslo'\";\n\t\tmysql -u root -h ${MYSQL_IP}
+    -e \"GRANT ALL ON pcscf.* TO 'pcscf'@'%'\";\n\t\tmysql -u root -h ${MYSQL_IP}
+    -e \"GRANT ALL ON pcscf.* TO 'pcscf'@'$PCSCF_IP'\";\n\t\tmysql -u root -h ${MYSQL_IP}
+    -e \"FLUSH PRIVILEGES;\"\n\tfi\nfi\n\nif [[ ${DEPLOY_MODE} == 5G ]];\nthen\n    sed
+    -i 's|#!define WITH_RX\\b|##!define WITH_RX|g' /etc/kamailio_pcscf/pcscf.cfg\n\tsed
+    -i 's|##!define WITH_N5\\b|#!define WITH_N5|g' /etc/kamailio_pcscf/pcscf.cfg\nfi\n\nSUBSCRIPTION_EXPIRES_ENV=3600\n\nsed
+    -i 's|PCSCF_IP|'$PCSCF_IP'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|SUBSCRIPTION_EXPIRES_ENV|'$SUBSCRIPTION_EXPIRES_ENV'|g'
+    /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|SCP_IP|'$SCP_IP'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed
+    -i 's|PCSCF_PUB_IP|'$PCSCF_PUB_IP'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|IMS_DOMAIN|'$IMS_DOMAIN'|g'
+    /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|EPC_DOMAIN|'$EPC_DOMAIN'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed
+    -i 's|MYSQL_IP|'$MYSQL_IP'|g' /etc/kamailio_pcscf/pcscf.cfg\n\nsed -i 's|PCSCF_IP|'$PCSCF_IP'|g'
+    /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|SUBSCRIPTION_EXPIRES_ENV|'$SUBSCRIPTION_EXPIRES_ENV'|g'
+    /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|IMS_DOMAIN|'$IMS_DOMAIN'|g' /etc/kamailio_pcscf/pcscf.xml\nsed
+    -i 's|EPC_DOMAIN|'$EPC_DOMAIN'|g' /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|PCRF_BIND_PORT|'$PCRF_BIND_PORT'|g'
+    /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|PCSCF_BIND_PORT|'$PCSCF_BIND_PORT'|g'
+    /etc/kamailio_pcscf/pcscf.xml\n\nsed -i 's|RTPENGINE_IP|'$RTPENGINE_IP'|g' /etc/kamailio_pcscf/kamailio_pcscf.cfg\nsed
+    -i 's|RTPENGINE_IP|'$RTPENGINE_IP'|g' /etc/kamailio_pcscf/route/rtp.cfg\n\n# Add
+    static route to route traffic back to UE as there is not NATing\nip r add ${UE_IPV4_IMS}
+    via ${UPF_IP}\n# Route needed for VoWiFi client where internet APN is used\nip
+    r add ${UE_IPV4_INTERNET} via ${UPF_IP}\n\nmkdir -p /var/run/kamailio_pcscf\nrm
+    -f /kamailio_pcscf.pid\nexec kamailio -f /etc/kamailio_pcscf/kamailio_pcscf.cfg
+    -P /kamailio_pcscf.pid -DD -E -e $@\n\n# Sync docker time\n#ln -snf /usr/share/zoneinfo/$TZ
+    /etc/localtime && echo $TZ > /etc/timezone\n"
+  tls.cfg: |
+    #
+    # TLS Configuration File
+    #
+
+    # This is the default server domain, settings
+    # in this domain will be used for all incoming
+    # connections that do not match any other server
+    # domain in this configuration file.
+    #
+    [server:default]
+    method = SSLv23
+    verify_certificate = no
+    require_certificate = no
+    private_key = /etc/kamailio/kamailio-selfsigned.key
+    certificate = /etc/kamailio/kamailio-selfsigned.pem
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"dispatcher.list":"# SBC's\n","kamailio_pcscf.cfg":"#\n# TelcoSuite (V3) Proxy-CSCF\n#\n# Kamailio (OpenSER) SIP Server\n#     - web: http://www.kamailio.org\n#     - git: http://sip-router.org\n#\n# Refer to the Core CookBook at http://www.kamailio.org/dokuwiki/doku.php\n# for an explanation of possible statements, functions and parameters.\n#\n\nimport_file \"pcscf.cfg\"\n\n####### Defined Values #########\n# *** Value defines - IDs used later in config\n#!define DISPATCHER_LIST_SBC 1\n\n#!define DISPATCHER_DST_AVP \"i:1\"\n#!define DISPATCHER_GRP_AVP \"i:2\"\n#!define DISPATCHER_CNT_AVP \"i:3\"\n#!define DISPATCHER_SOCK_AVP \"i:4\"\n\n#!define RR_CUSTOM_USER_AVP \"i:5\"\n#!define DLG_TIMEOUT_AVP \"i:6\"\n\n#!define FLT_MOBILE_ORIG 1\n#!define FLT_DIALOG 2\n#!define FLT_NAT 3\n#!define FLT_RTP 4\n#!define FLT_CAPTURE 5\n\n####### Global Parameters #########\ndebug=2\nlog_stderror=no\n\nmemdbg=5\nmemlog=5\n\nmax_while_loops=5000\n\n#!ifdef WITH_XMLRPC\nlisten=tcp:127.0.0.1:5060\n#!endif\n\n# Locks all ser pages into memory making it unswappable (in general one \n# doesn't want his sip proxy swapped out )\nmlock_pages=yes\n# Tries to pre-fault all the shared memory, before starting. When \"on\", start \n# time will increase, but combined with mlock_pages will guarantee ser will get \n# all its memory from the beginning (no more kswapd slow downs)\nshm_force_alloc=yes\n\n# Do SRV-Loadbalancing:\ndns_srv_lb=on\n# Always prefer IPv6:\ndns_try_ipv6=on\n# Always prefer IPv6:\ndns_cache_flags=4\n# DNS-Based failover\nuse_dns_failover=on\n# Query NAPTR-Records as well:\ndns_try_naptr=off\n# DNS cache won't be used (all dns lookups will result into a DNS request)\nuse_dns_cache=off\n\nuser_agent_header=\"User-Agent: TelcoSuite Proxy-CSCF\"\nserver_header=\"Server: TelcoSuite Proxy-CSCF\"\n\nlog_facility=LOG_LOCAL0\nlog_name=\"pcscf\"\nlog_prefix_mode=1\nlog_prefix=\"{$mt $hdr(CSeq) $ci $cfg(route)} \"\n\nfork=yes\nchildren=4\n\n#!ifndef TCP_PROCESSES\n# Number of TCP Processes\n#!define TCP_PROCESSES 16\n#!endif\n\n#!ifdef WITH_TLS\n# Check, if TCP is enabled:\n#!ifndef WITH_TCP\n#!define WITH_TCP\n#!endif\nenable_tls=yes\n#!endif\n\n#!ifdef WITH_XMLRPC\n#!ifndef WITH_TCP\n#!define WITH_TCP\n#!endif\n#!ifndef TCP_PROCESSES\n# Number of TCP Processes\n#!define TCP_PROCESSES 3\n#!endif\n#!endif\n\n#!ifdef WITH_TCP\n# life time of TCP connection when there is no traffic\n# - a bit higher than registration expires to cope with UA behind NAT\ntcp_connection_lifetime=UE_SUBSCRIPTION_EXPIRES\n# If a message received over a tcp connection has \"alias\" in its via a new tcp\n# alias port will be created for the connection the message came from (the\n# alias port will be set to the via one).\n#\n# Note: For NAT traversal of TCP clients it is better to not use \n# tcp_accept_aliases but just use nathelper module and \n# fix_nated_[contact|register] functions. \ntcp_accept_aliases=no\n# Enable SIP outbound TCP keep-alive using PING-PONG (CRLFCRLF - CRLF).\ntcp_crlf_ping=yes\n\ntcp_reuse_port=yes\n\ntcp_accept_no_cl=yes\ntcp_rd_buf_size=16384\n\n#!ifdef TCP_PROCESSES\ntcp_children=TCP_PROCESSES\n#!endif\n#!else\ndisable_tcp=yes\n#!endif\n\n/* uncomment the next line to disable the auto discovery of local aliases\n   based on reverse DNS on IPs (default on) */\nauto_aliases=no\n\n#phone2tel=1\n\nudp_mtu = 1300\nudp_mtu_try_proto = TCP\n\n/* uncomment and configure the following line if you want Kamailio to \n   bind on a specific interface/port/proto (default bind on all available) */\n\nsystem.shutdownmode = 0 desc \"System shutdown mode\"\nsystem.service = \"Proxy-CSCF\" desc \"Function of this server\"\n\n####### Modules Section ########\n\n# set paths to location of modules\nmpath=\"/usr/lib64/kamailio/modules_k/:/usr/lib64/kamailio/modules/:/usr/lib/kamailio/modules_k/:/usr/lib/kamailio/modules/:/usr/lib/x86_64-linux-gnu/kamailio/modules/:/usr/local/lib64/kamailio/modules\"\n\n# Fifo Module\n# Kamailio Extensions (e.g. MI:uptime, MI:version, cfg:isflagset etc.)\nloadmodule \"kex.so\"\nloadmodule \"corex.so\"\n# Transaction Module\nloadmodule \"tm.so\"\nloadmodule \"tmx.so\"\nloadmodule \"sl.so\"\nloadmodule \"rr.so\"\nloadmodule \"pv.so\"\nloadmodule \"maxfwd.so\"\nloadmodule \"textops.so\"\nloadmodule \"textopsx.so\"\n# SIP-Utilities: options_reply\nloadmodule \"siputils.so\"\nloadmodule \"sanity.so\"\nloadmodule \"ctl.so\"\nloadmodule \"cfg_rpc.so\"\nloadmodule \"xlog.so\"\nloadmodule \"auth.so\"\nloadmodule \"dispatcher.so\"\nloadmodule \"sctp.so\"\nloadmodule \"path.so\"\nloadmodule \"statistics.so\"\n\nloadmodule \"ims_dialog.so\"\nloadmodule \"ims_usrloc_pcscf.so\"\n#!ifdef WITH_IPSEC\nloadmodule \"ims_ipsec_pcscf.so\"\n#!endif\nloadmodule \"ims_registrar_pcscf.so\"\n\n#!ifdef WITH_XMLRPC\nloadmodule \"xmlrpc.so\"\n#!endif\n\n#!ifdef WITH_REGINFO\nloadmodule \"pua.so\"\n#!endif\n\n#!ifdef DB_URL\nloadmodule \"db_mysql.so\"\n#!ifdef DB_URL2\nloadmodule \"db_cluster.so\"\n#!endif\n#!endif\n\n#!ifdef WITH_DEBUG\nloadmodule \"debugger.so\"\n#!endif\n\nloadmodule \"usrloc.so\"\nloadmodule \"registrar.so\"\nloadmodule \"rtimer.so\"\nloadmodule \"nathelper.so\"\n\n#!ifdef WITH_ANTIFLOOD\nloadmodule \"pike.so\"\n#!endif\n\n#!ifdef WITH_TLS\nloadmodule \"tls.so\"\n#!endif\n\n#!ifdef WITH_RTPPING\nloadmodule \"rtpping.so\"\n#!endif\n\n\nloadmodule \"sdpops.so\"\nloadmodule \"rtpengine.so\"\n\n#!ifdef WITH_WEBSOCKET\nloadmodule \"xhttp.so\"\nloadmodule \"websocket.so\"\n#!endif\n\n#!ifdef WITH_RX\nloadmodule \"cdp.so\"\nloadmodule \"cdp_avp.so\"\nloadmodule \"ims_qos.so\"\n#!endif\n\n#!ifdef WITH_N5\nloadmodule \"http_client.so\"\nloadmodule \"jansson.so\"\nloadmodule \"nghttp2.so\"\nloadmodule \"uuid.so\"\n#!endif\n\n#!ifdef CAPTURE_NODE\nloadmodule \"siptrace.so\"\n#!endif\n\n#!ifdef WITH_NATPING\nloadmodule \"uac.so\"\nloadmodule \"sqlops.so\"\n#!endif\n\n# HTable as a cache:\nloadmodule \"htable.so\"\n\n#!ifdef WITH_DEBUG\n#loadmodule \"debugger.so\"\nmodparam(\"debugger\", \"mod_hash_size\", 5)\nmodparam(\"debugger\", \"mod_level_mode\", 1)\nmodparam(\"debugger\", \"mod_level\", \"xlog=3\")\nmodparam(\"debugger\", \"mod_level\", \"rtpengine=3\")\nmodparam(\"debugger\", \"mod_level\", \"ims_qos=3\")\n#!ifdef WITH_IPSEC\nmodparam(\"debugger\", \"mod_level\", \"ims_ipsec_pcscf=3\")\n#!endif\nmodparam(\"debugger\", \"mod_level\", \"textops=3\")\nmodparam(\"debugger\", \"mod_level\", \"tm=3\")\nmodparam(\"debugger\", \"mod_level\", \"ims_registrar_pcscf=3\")\nmodparam(\"debugger\", \"mod_level\", \"ims_usrloc_pcscf=3\")\n#!ifdef WITH_DEBUG_TRACE\nmodparam(\"debugger\", \"cfgtrace\", 1)\n#!endif\n#!endif\n\nloadmodule \"jsonrpcs.so\"\n# ----- jsonrpcs params -----\nmodparam(\"jsonrpcs\", \"pretty_format\", 1)\n/* set the path to RPC fifo control file */\nmodparam(\"jsonrpcs\", \"fifo_name\", \"/var/run/kamailio/kamailio_rpc.fifo\")\n/* set the path to RPC unix socket control file */\nmodparam(\"jsonrpcs\", \"dgram_socket\", \"/var/run/kamailio/kamailio_rpc.sock\")\n\n# ----------------- setting module-specific parameters ---------------\n#!ifdef DB_URL2\n# ----- db_cluster params -----\nmodparam(\"db_cluster\", \"connection\", DB_URL)\nmodparam(\"db_cluster\", \"connection\", DB_URL2)\nmodparam(\"db_cluster\", \"cluster\", \"cluster1=\u003econ1=2s2s;con2=1s1s\")\n#!endif\n\n#!ifdef WITH_ANTIFLOOD\n# ----- pike params -----\nmodparam(\"pike\", \"sampling_time_unit\", 2)\nmodparam(\"pike\", \"reqs_density_per_unit\", 16)\nmodparam(\"pike\", \"remove_latency\", 4)\n\n# ----- htable params -----\n# ip ban htable with autoexpire after 5 minutes\nmodparam(\"htable\", \"htable\", \"ipban=\u003esize=8;autoexpire=300\")\nmodparam(\"htable\", \"htable\", \"failedauth=\u003esize=8;autoexpire=120\")\nmodparam(\"htable\", \"htable\", \"natpingfrom=\u003esize=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\n#!endif\n\nmodparam(\"htable\", \"htable\", \"a=\u003esize=8;autoexpire=20\")\n\n#!ifdef WITH_IMS_HDR_CACHE\nmodparam(\"htable\", \"htable\", \"serviceroutes=\u003esize=16;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\nmodparam(\"htable\", \"htable\", \"associateduris=\u003esize=16;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\n#!endif\n\n#!ifdef WITH_NATPING\nmodparam(\"htable\", \"htable\", \"natping=\u003esize=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\nmodparam(\"htable\", \"htable\", \"natpingfail=\u003esize=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\nmodparam(\"htable\", \"htable\", \"natpingfrom=\u003esize=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\n#!ifdef DB_URL2\nmodparam(\"sqlops\",\"sqlcon\",\"pcscf=\u003ecluster://cluster1\")\n#!else\nmodparam(\"sqlops\",\"sqlcon\", SQLOPS_DBURL)\n#!endif\n\nmodparam(\"uac\",\"restore_mode\",\"none\")\n\n# ----------------- Settings for RTimer ---------------\n# time interval set to 60 seconds\nmodparam(\"rtimer\", \"timer\", \"name=NATPING;interval=5;mode=1;\")\nmodparam(\"rtimer\", \"exec\", \"timer=NATPING;route=NATPING\")\n#!endif\n\n# ----- tm params -----\n# auto-discard branches from previous serial forking leg\n#modparam(\"tm\", \"failure_reply_mode\", 3)\n# default retransmission timeout: 3 sec\nmodparam(\"tm\", \"fr_timer\", 3000)\n# default invite retransmission timeout after 1xx: 120sec\nmodparam(\"tm\", \"fr_inv_timer\", 120000)\n# Dont reply automatically with \"100 Trying\"\nmodparam(\"tm\", \"auto_inv_100\", 0)\n\n# ----- rr params -----\n# add value to ;lr param to cope with most of the UAs\nmodparam(\"rr\", \"enable_full_lr\", 1)\n# do not append from tag to the RR (no need for this script)\nmodparam(\"rr\", \"append_fromtag\", 1)\n# add a Username to RR-Header\nmodparam(\"rr\", \"add_username\", 1)\n# Take User from a custom AVP\nmodparam(\"rr\", \"custom_user_avp\", \"$avp(RR_CUSTOM_USER_AVP)\")\nmodparam(\"rr\", \"force_send_socket\", 1)\n\n#!ifdef WITH_XMLRPC\n# ----- xmlrpc params -----\nmodparam(\"xmlrpc\", \"route\", \"XMLRPC\");\nmodparam(\"xmlrpc\", \"url_match\", \"^/RPC\")\n#!endif\n\n#!ifdef WITH_TLS\n# ----- tls params -----\nmodparam(\"tls\", \"config\", \"/etc/kamailio_pcscf/tls.cfg\")\n#!endif\n\n# ----- rtpproxy params -----\nmodparam(\"rtpengine\", \"setid_default\", 1)\nmodparam(\"rtpengine\", \"rtpengine_sock\", \"1 == udp:RTPENGINE_IP:2223\")\n#modparam(\"rtpengine\", \"rtpengine_sock\", \"2 == udp:localhost:2224\")\nmodparam(\"rtpengine\", \"setid_avp\", \"$avp(setid)\")\nmodparam(\"rtpengine\", \"extra_id_pv\", \"$avp(extra_id)\")\n\nmodparam(\"path\", \"use_received\", 1)\n\n# ----- ctl params -----\nmodparam(\"ctl\", \"binrpc\", \"unix:/var/run/kamailio/kamailio_ctl\")\n\n# ----------------- Settings for Dispatcher ---------------\nmodparam(\"dispatcher\", \"list_file\", \"/etc/kamailio_pcscf/dispatcher.list\")\n\n# Dispatcher: Enable Failover-Support\nmodparam(\"dispatcher\", \"flags\", 2)\n# Dispatcher: Overwrite Destination address, if required.\nmodparam(\"dispatcher\", \"force_dst\", 1)\n# AVP's required for Fail-Over-Support:\n#modparam(\"dispatcher\", \"dst_avp\", \"$avp(DISPATCHER_DST_AVP)\")\n#modparam(\"dispatcher\", \"grp_avp\", \"$avp(DISPATCHER_GRP_AVP)\")\n#modparam(\"dispatcher\", \"cnt_avp\", \"$avp(DISPATCHER_CNT_AVP)\")\n#modparam(\"dispatcher\", \"sock_avp\", \"$avp(DISPATCHER_SOCK_AVP)\")\n\n#modparam(\"dispatcher\", \"xavp_dst\", \"$avp(DISPATCHER_DST_AVP)\")\n#modparam(\"dispatcher\", \"xavp_dst_mode\", 0)\n#modparam(\"dispatcher\", \"xavp_ctx\", \"$avp(DISPATCHER_CNT_AVP)\")\n#modparam(\"dispatcher\", \"xavp_ctx_mode\", 0)\n\n# Try to recover disabled destinations every 15 seconds.\nmodparam(\"dispatcher\", \"ds_ping_interval\", 15)\n# Actively query the gateways:\nmodparam(\"dispatcher\", \"ds_probing_mode\", 1)\n\n# -- usrloc params --\n#!ifdef DB_URL\n#!ifdef DB_URL2\nmodparam(\"ims_usrloc_pcscf\", \"db_url\", \"cluster://cluster1\")\n#!else\nmodparam(\"ims_usrloc_pcscf\", \"db_url\", DB_URL)\n#!endif\nmodparam(\"ims_usrloc_pcscf\", \"db_mode\", 0)\n#!endif\n#modparam(\"ims_usrloc_pcscf\", \"hashing_type\", 2)\nmodparam(\"ims_usrloc_pcscf\", \"enable_debug_file\", 0)\nmodparam(\"ims_usrloc_pcscf\", \"match_contact_host_port\", 1)\nmodparam(\"ims_registrar_pcscf\", \"is_registered_fallback2ip\", 1)\nmodparam(\"ims_registrar_pcscf\", \"ignore_reg_state\", 1)\nmodparam(\"ims_registrar_pcscf\", \"ignore_contact_rxport_check\", 1)\nmodparam(\"ims_registrar_pcscf\", \"pending_reg_expires\", 30)\nmodparam(\"ims_registrar_pcscf\", \"subscription_expires\", UE_SUBSCRIPTION_EXPIRES)\nmodparam(\"ims_registrar_pcscf\", \"delete_delay\", CONTACT_DELETE_DELAY)\nmodparam(\"ims_usrloc_pcscf\", \"expires_grace\", 120)\n\n#!ifdef WITH_REGINFO\nmodparam(\"ims_registrar_pcscf\", \"subscribe_to_reginfo\", 1)\nmodparam(\"ims_registrar_pcscf\", \"publish_reginfo\", 1)\nmodparam(\"ims_registrar_pcscf\", \"pcscf_uri\", \"sip:HOSTNAME\")\n#!else\nmodparam(\"ims_registrar_pcscf\", \"subscribe_to_reginfo\", 0)\nmodparam(\"ims_registrar_pcscf\", \"publish_reginfo\", 0)\n#!endif\n\n#!ifdef WITH_IPSEC\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_listen_addr\", IPSEC_LISTEN_ADDR)\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_client_port\", IPSEC_CLIENT_PORT)\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_server_port\", IPSEC_SERVER_PORT)\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_spi_id_start\", 4096)\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_max_connections\", IPSEC_MAX_CONN)\nmodparam(\"ims_ipsec_pcscf\", \"ipsec_preferred_ealg\", \"null\")\nmodparam(\"htable\", \"htable\", \"ipsec_clients=\u003esize=8;autoexpire=UE_SUBSCRIPTION_EXPIRES;\")\n#!endif\n\n#!ifdef WITH_RX\n# -- CDP params --\nmodparam(\"cdp\",\"config_file\",\"/etc/kamailio_pcscf/pcscf.xml\")\n# -- diameter_rx params --\nmodparam(\"ims_qos\", \"rx_dest_realm\", \"PCRF_REALM\")\nmodparam(\"ims_qos\", \"early_qosrelease_reason\", \"Sorry - QoS failed\")\nmodparam(\"ims_qos\", \"confirmed_qosrelease_headers\", \"X-Reason: QoS failed\\r\\n\")\nmodparam(\"ims_qos\", \"authorize_video_flow\", 1)\nmodparam(\"ims_qos\", \"af_signaling_ip\", RX_AF_SIGNALING_IP)\nmodparam(\"ims_qos\", \"include_rtcp_fd\", 1)\nmodparam(\"ims_qos\", \"rx_auth_expiry\", UE_SUBSCRIPTION_EXPIRES)\nmodparam(\"ims_qos\", \"recv_mode\", 1)\nmodparam(\"ims_qos\", \"dialog_direction\", RX_IMS_REG_DIALOG_DIRECTION)\n#!endif\n\n#!ifdef WITH_N5\n\n# Tables to store users and their session details\nmodparam(\"htable\", \"htable\", \"user_data=\u003esize=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\", \"user_ids=\u003esize=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\", \"user_sdps_ip=\u003esize=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\", \"user_sdps_port=\u003esize=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\", \"user_sdps_rtcp_port=\u003esize=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\", \"user_sip_ips=\u003esize=8;autoexpire=3600;\")\nmodparam(\"htable\", \"htable\", \"user_sip_ports=\u003esize=8;autoexpire=3600;\")\n\n# HTTP2 for 5G -- Modules Parameters\nmodparam(\"http_client\", \"httpredirect\", 1)\nmodparam(\"http_client\", \"useragent\", \"AF\")\nmodparam(\"http_client\", \"maxdatasize\", 64535)\nmodparam(\"http_client\", \"connection_timeout\", 2)\nmodparam(\"http_client\", \"keep_connections\", 1)\nmodparam(\"http_client\", \"response_headers\", 1)\nmodparam(\"http_client\", \"query_result\", 1)\nmodparam(\"nghttp2\", \"listen_addr\", \"N5_BIND_IP\")\nmodparam(\"nghttp2\", \"listen_port\", \"N5_BIND_PORT\")\n# Replace the following with your own Key and Cert, you can use HAProxy to terminate TLS towards Clients e.g. Open5gs PCF\n# modparam(\"nghttp2\", \"tls_private_key\", \"/mnt/pcscf/http2_key.pem\")\n# modparam(\"nghttp2\", \"tls_public_key\", \"/mnt/pcscf/http2_tr.pem\")\n\nmodparam(\"rtimer\", \"timer\", \"name=NRF_NFM;interval=5;mode=1;\")\nmodparam(\"rtimer\", \"exec\", \"timer=NRF_NFM;route=NRF_NFM\")\n#!endif\n\n# -- pua params --\n#!ifdef WITH_REGINFO\n#!ifdef DB_URL\n#!ifdef DB_URL2\nmodparam(\"pua\", \"db_url\", \"cluster://cluster1\")\n#!else\nmodparam(\"pua\", \"db_url\", DB_URL)\n#!endif\n#!endif\n#!endif\n\n# -- ims_dialog params --\nmodparam(\"ims_dialog\", \"dlg_flag\", FLT_DIALOG)\nmodparam(\"ims_dialog\", \"timeout_avp\", \"$avp(DLG_TIMEOUT_AVP)\")\nmodparam(\"ims_dialog\", \"detect_spirals\", 0)\nmodparam(\"ims_dialog\", \"profiles_no_value\", \"orig ; term\")\nmodparam(\"ims_dialog\", \"profiles_with_value\", \"caller ; callee\")\n#!ifdef DB_URL\n#!ifdef DB_URL2\nmodparam(\"ims_dialog\", \"db_url\", \"cluster://cluster1\")\n#!else\nmodparam(\"ims_dialog\", \"db_url\", DB_URL)\n#!endif\nmodparam(\"ims_dialog\", \"db_mode\", 0)\n#!endif\n\n#!ifdef CAPTURE_NODE\n# Destination, where to send the traffic\nmodparam(\"siptrace\", \"duplicate_uri\", CAPTURE_NODE)\n# Trace all traffic\nmodparam(\"siptrace\", \"trace_on\", 1)\nmodparam(\"siptrace\", \"trace_to_database\", 0)\nmodparam(\"siptrace\", \"trace_flag\", FLT_CAPTURE)\nmodparam(\"siptrace\", \"hep_mode_on\", 1)\n#!endif\n\n# -- statistics params --\nmodparam(\"statistics\", \"variable\", \"register_success\")\nmodparam(\"statistics\", \"variable\", \"register_failed\")\nmodparam(\"statistics\", \"variable\", \"register_time\")\n\n# Main SIP request routing logic\n# - processing of any incoming SIP request starts with this route\nroute {\n##!ifdef WITH_DEBUG\n\txnotice(\"PCSCF: $rm $ru ($fu ($si:$sp) to $tu, $ci)\\n\");\n##!endif\n\n#!ifdef WITH_WEBSOCKET\n\tif (($Rp == MY_WS_PORT || $Rp == MY_WSS_PORT) \u0026\u0026 !(proto == WS || proto == WSS)) {\n\t\txlog(\"L_WARN\", \"Websocket-request received on SIP/$Rp\\n\");\n\t\tsl_send_reply(\"403\", \"Forbidden - Websocket-request received on SIP/$Rp\");\n\t\texit;\n\t}\n#!endif\n\t# per request initial checks\n\troute(REQINIT);\n\n#!ifdef WITH_IPSEC\n\tif (is_request() \u0026\u0026 is_method(\"REGISTER\")) {\n\t\tsht_lock(\"ipsec_clients=\u003eipsec_clients_lock\");\n\t\t$sht(ipsec_clients=\u003e$si) = $null;\n\t\tif ($hdrc(Security-Client) == 1) {\n\t\t\t$sht(ipsec_clients=\u003e$si) = 1;\n\t\t}\n\t\tsht_unlock(\"ipsec_clients=\u003eipsec_clients_lock\");\n\t}\n#!endif\n\n\t# CANCEL processing\n\tif (is_method(\"CANCEL\")) {\n\t\tif (t_check_trans()) {\n\t\t\tt_relay();\n\t\t}\n\t\texit;\n\t}\n\n\tif (is_method(\"NOTIFY\") \u0026\u0026 (uri==myself)) {\n\t\troute(NOTIFY);\n\t\texit;\n\t}\n\n\t# handle retransmissions\n\tif (!is_method(\"ACK\")) {\n\t\tif(t_precheck_trans()) {\n\t\t\tt_check_trans();\n\t\t\texit;\n\t\t}\n\t}\n\t#t_check_trans();\n\n\t# Check for Re-Transmissions\n\tt_check_trans();\n\n\t# handle requests within SIP dialogs\n\troute(WITHINDLG);\n\n\t### only initial requests (no To tag)\n\n\tif (is_method(\"UPDATE\")) {\n\t\tsend_reply(\"403\",\"Forbidden - Target refresh outside dialog not allowed\");\n\t\tbreak;\n\t}\n\tif (is_method(\"BYE|PRACK\")) {\n\t\tsend_reply(\"403\",\"Forbidden - Originating subsequent requests outside dialog not allowed\");\n\t\tbreak;\n\t}\n\n\t#Set DLG flag to track dialogs using dialog2\n\tif (!is_method(\"REGISTER|SUBSCRIBE\"))\n\t\tsetflag(FLT_DIALOG);\n\n\tloose_route();\n#!ifdef WITH_SBC\n\tif (ds_is_from_list(DISPATCHER_LIST_SBC)) {\n\t\tif (is_method(\"INVITE\")) {\n\t\t\tif (is_present_hf(\"C-Params\")) {\n\t\t\t\tremove_hf(\"Contact\");\n\t\t\t\tremove_hf(\"C-Params\");\t\n\t\t\t\tappend_hf(\"Contact: $ct;$hdr(C-Params)\\r\\n\");\n\t\t\t}\n\t\t\tif ($route_uri =~ \"sip:mo@.*\") {\n\t\t\t\t# prepend mo as user for record route\n\t\t\t\t$avp(RR_CUSTOM_USER_AVP)=\"mo\";\n\t\t\t\tif (is_present_hf(\"P-Route\")) {\n\t\t\t\t\t$du = $(hdr(P-Route){nameaddr.uri});\n\t\t\t\t\tremove_hf(\"P-Route\");\n\t\t\t\t\tappend_hf(\"Route: $hdr(P-Route)\\r\\n\");\n\t\t\t\t}\n\t\t\t\tt_on_reply(\"SBC_GET_CPARAMS\");\n\t\t\t}\n\t\t\tif ($route_uri =~ \"sip:mt@.*\") {\n\t\t\t\t$du = $ru;\n\t\t\t\thandle_ruri_alias();\n\t\t\t\tif ($rc == 1) {\n\t\t\t\t\tsetflag(FLT_NAT);\n\t\t\t\t}\n\t\t\t\txlog(\"$$dP =\u003e $(dP{s.tolower}) ($du)\\n\");\n\t\t\t\t# prepend mo as user for record route\n\t\t\t\t$avp(RR_CUSTOM_USER_AVP)=\"mt\";\n\t\t\t\tif ($(dP{s.tolower}) == \"tls\") {\n\t\t\t\t\troute(ENC_SRTP);\n\t\t\t\t} else if ($(dP{s.tolower}) == \"ws\") {\n\t\t\t\t\t# Even WSS is incorrectly shown as WS\n\t\t\t\t\troute(ENC_WSS_RTP);\n\t\t\t\t} else if ($(dP{s.tolower}) == \"wss\") {\n\t\t\t\t\troute(ENC_WSS_RTP);\n\t\t\t\t} else {\n\t\t\t\t\troute(ENC_RTP);\n\t\t\t\t}\n\t\t\t\t# Handle NAT\n\t\t\t\troute(NATMANAGE);\n\t\t\t\t# Handle Mobile Terminated requests\n\t\t\t\troute(MT);\t\n\t\t\t}\n\t\t}\n\t\tif (is_method(\"REGISTER\")) {\n\t\t\tappend_hf(\"Path: \u003csip:term@$Ri:$Rp;lr\u003e\\r\\n\");\n\t\t}\n\t} else {\n#!endif\n\t\tif ($route_uri =~ \"sip:term@.*\") {\n#!ifdef WITH_SBC\n#!ifdef WITH_SBC_CALL\n\t\t\tif (is_method(\"INVITE\")) {\n#!endif\n\t\t\t\tif (!strempty($(ct{tobody.params}))) {\n\t\t\t\t\tappend_hf(\"C-Params: $(ct{tobody.params})\\r\\n\");\n\t\t\t\t}\n\t\t\t\t\n\t\t\t\tappend_hf(\"SBC: mt\\r\\n\");\n\t\t\t\t# Do some Round-Robin on the SBC's\n\t\t\t\tt_on_failure(\"SBC_failure\");\n\t\t\t\t# Choose an SBC to send the call to:\n\t\t\t\tif (!ds_select_dst(DISPATCHER_LIST_SBC, \"4\")) {\n\t\t\t\t\tsend_reply(\"503\", \"Service Unavailable (SBC failure)\");\n\t\t\t\t\texit;\n\t\t\t\t}\n#!ifdef WITH_SBC_CALL\n\t\t\t}\n#!endif\n#!else\n\t\t\thandle_ruri_alias();\n\t\t\tif ($dP == \"tls\") {\n\t\t\t\troute(ENC_SRTP);\n\t\t\t} else if ($dP == \"ws\") {\n\t\t\t\troute(ENC_WS_RTP);\n\t\t\t} else if ($dP == \"wss\") {\n\t\t\t\troute(ENC_WSS_RTP);\n\t\t\t} else {\n\t\t\t\troute(ENC_RTP);\n\t\t\t}\n\t\t\tif ($rc == 1) {\n\t\t\t\tsetflag(FLT_NAT);\n\t\t\t}\n\t\t\t# Handle NAT\n\t\t\troute(NATMANAGE);\n\t\t\t# prepend mo as user for record route\n\t\t\t$avp(RR_CUSTOM_USER_AVP)=\"mt\";\n\t\t\troute(MT);\t\n#!endif\n\t\t} else {\n\t\t\tforce_rport();\n\t\t\tif(is_method(\"INVITE|REGISTER\")) {\n\t\t\t\tadd_contact_alias();\n\t\t\t}\n\t\t\tsetflag(FLT_NAT);\n\n\t\t\tif (is_method(\"REGISTER\")) {\n\t\t\t\troute(REGISTER);\n\t\t\t\texit;\n\t\t\t}\n\t\t\n\t\t\t# prepend mo as user for record route\n\t\t\t$avp(RR_CUSTOM_USER_AVP)=\"mo\";\n\t\t\t# Set Flag for MO:\n\t\t\tsetflag(FLT_MOBILE_ORIG);\n\t\t\t# Increase timer for inbound requests, we may have to do failover:\n\t\t\tt_set_fr(120000, 30000);\n\t\t\troute(MO);\t\n\t\t\tif (is_method(\"INVITE\")) {\n\t\t\t\t# SRTP in RTP übersetzen\n\t\t\t\tif ($pr == \"tls\") {\n\t\t\t\t\troute(DEC_SRTP);\n\t\t\t\t} else if ($pr == \"ws\") {\n\t\t\t\t\troute(DEC_WS_RTP);\n\t\t\t\t} else if ($pr == \"wss\") {\n\t\t\t\t\troute(DEC_WSS_RTP);\n\t\t\t\t} else {\n\t\t\t\t\troute(DEC_RTP);\n\t\t\t\t}\n\t\t\t\t# Handle NAT\n\t\t\t\troute(NATMANAGE);\n\t\t\t}\n#!ifdef WITH_SBC\n#!ifdef WITH_SBC_CALL\n\t\t\tif (is_method(\"INVITE\")) {\n#!endif\n\t\t\t\t# Apply changes to this message\n\t\t\t\tmsg_apply_changes();\n\t\t\t\t# Copy Route-Header:\n\t\t\t\tappend_hf(\"P-Route: $hdr(Route)\\r\\n\");\n\t\t\t\tif (!strempty($(ct{tobody.params}))) {\n\t\t\t\t\tappend_hf(\"C-Params: $(ct{tobody.params})\\r\\n\");\n\t\t\t\t}\n\t\t\t\tappend_hf(\"SBC: mo\\r\\n\");\n\t\t\t\t# Do some Round-Robin on the SBC's\n\t\t\t\tt_on_failure(\"SBC_failure\");\n\t\t\t\t# Choose an SBC to send the call to:\n\t\t\t\tif (!ds_select_dst(DISPATCHER_LIST_SBC, \"4\")) {\n\t\t\t\t\tsend_reply(\"503\", \"Service Unavailable (SBC failure)\");\n\t\t\t\t\texit;\n\t\t\t\t}\n#!endif\n#!ifdef WITH_SBC_CALL\n\t\t\t}\n#!endif\n\t\t}\n#!ifdef WITH_SBC\n\t}\n#!endif\n\tif (is_method(\"INVITE|SUBSCRIBE\")) {\n\t\t# record routing for dialog forming requests (in case they are routed)\n\t\trecord_route();\n\t}\n\n\t# Forward request:\n\troute(RELAY);\n\texit;\n}\n\nroute[SBC_GET_CPARAMS] {\n\tif (!strempty($(ct{tobody.params}))) {\n\t\tappend_hf(\"C-Params: $(ct{tobody.params})\\r\\n\");\n\t}\n}\n\n# Per SIP request initial checks\nroute[REQINIT] {\n\t# Reply to OPTIONS:\n\tif (is_method(\"OPTIONS\") \u0026\u0026 (uri==myself)) {\n\t\toptions_reply();\n\t\texit;\n\t}\n\n\t$var(used) = 1 - ($stat(free_size) / $stat(total_size));\n\txlog(\"L_DBG\", \"Mem: Total $stat(total_size), Free $stat(free_size) [$var(used)% used]\\n\");\n\tif ($var(used) \u003e 95) {\n\t\tsend_reply(\"503\", \"Server overloaded\");\n\t\texit;\n\t}\n\n\t# Trace this message\n#!ifdef CAPTURE_NODE\n\tsip_trace();\t\n\tsetflag(FLT_CAPTURE);\n#!endif\n\n#!ifdef WITH_ANTIFLOOD\n\t# flood dection from same IP and traffic ban for a while\n\t# be sure you exclude checking trusted peers, such as pstn gateways\n\t# - local host excluded (e.g., loop to self)\n\tif (!has_totag() \u0026\u0026 (src_ip!=myself) \u0026\u0026 !ds_is_from_list())\n\t{\n\t\tif($sht(ipban=\u003e$si)!=$null)\n\t\t{\n\t\t\t# ip is already blocked\n\t\t\txlog(\"request from blocked IP - $rm from $fu (IP:$si:$sp)\\n\");\n\t\t\txlog(\"Blocking traffic from $si\\n\");\n\t\t\texit;\n\t\t}\n\t\tif (!pike_check_req()) {\n\t\t\txlog(\"L_ALERT\",\"ALERT: pike blocking $rm from $fu (IP:$si:$sp, $ua)\\n\");\n\t\t\txlog(\"Blocking traffic from $si\\n\");\n\t\t\t$sht(ipban=\u003e$si) = 1;\n\t\t\texit;\n\t\t}\n\t}\n\tif ((uri == myself) \u0026\u0026 is_method(\"INVITE|REGISTER\")) {\n\t\txlog(\"L_ALERT\",\"ALERT: Request to myself: $ru from $fu (IP:$si:$sp, $ua), Blocking\\n\");\n\t\txlog(\"Blocking traffic from $si\\n\");\n\t\t$sht(ipban=\u003e$si) = 1;\n\t\texit;\n\t}\n#!endif\n\n\tif (!mf_process_maxfwd_header(\"10\")) {\n\t\tsl_send_reply(\"483\",\"Too Many Hops\");\n\t\texit;\n\t}\n\n\tif(!sanity_check(\"1511\", \"7\")) {\n\t\txlog(\"Malformed SIP message from $si:$sp\\n\");\n\t\texit;\n\t}\n\n\t# Check for shutdown mode:\n\tif (!has_totag() \u0026\u0026 ($sel(cfg_get.system.shutdownmode) \u003e 0)) {\n\t\tsend_reply(\"503\", \"Server shutting down\");\n\t\texit;\n\t}\n\n\t# Ignore Re-Transmits:\n\tif (t_lookup_request()) {\n\t\texit;\n\t}\n\n\tif (is_method(\"INVITE|REGISTER\")) {\n\t\tsend_reply(\"100\", \"Trying\");\n\t}\t\n}\n\nroute[RELAY] {\n\tif (!t_relay()) {\n\t\tsl_reply_error();\n\t}\n\texit;\n}\n\n# Handle requests within SIP dialogs\nroute[WITHINDLG] {\n\tif (has_totag()) {\n\t\txnotice(\"Within DLG\\n\");\n\t\t# sequential request withing a dialog should\n\t\t# take the path determined by record-routing\n\t\tif (loose_route()) {\n\t\t\txnotice(\"Within loose route\\n\");\n\t\t\tif(!isdsturiset()) {\n\t\t\t\thandle_ruri_alias();\n\t\t\t\t#if ($rc == 1) {\n\t\t\t\t#\t$ru = \"sip:\" + $rU + \"@\" + $dd + \":\" + $dp + \";transport=\" + $rP;\n\t\t\t\t#}\n\t\t\t}\n\n\t\t\tif ($route_uri =~ \"sip:mt@.*\") {\n\t\t\t\troute(MT_indialog);\n\t\t\t} else {\n\t\t\t\troute(MO_indialog);\n\t\t\t}\n\n\t\t\t# Handle NAT\n\t\t\troute(NATMANAGE);\n\n\t\t\troute(RELAY);\n\t\t\texit;\n\t\t}\n\t\tif ( is_method(\"ACK\") ) {\n\t\t\txlog(\"Contact of Reply: $T_rpl($ct)\\n\");\n\t\t\tif ( t_check_trans() ) {\n\t\t\t\t# no loose-route, but stateful ACK;\n\t\t\t\t# must be an ACK after a 487\n\t\t\t\t# or e.g. 404 from upstream server\n\t\t\t\tt_relay();\n\t\t\t\texit;\n\t\t\t} else {\n\t\t\t\t# ACK without matching transaction ... ignore and discard\n\t\t\t\texit;\n\t\t\t}\n\t\t}\n\t\tsl_send_reply(\"404\",\"Not here\");\n\t\texit;\n\t}\n}\n\n######################################################################\n# Negative replies to REGISTER requests:\n######################################################################\nfailure_route[SBC_failure] {\n#!ifdef WITH_IPBLOCK\n\tif (is_method(\"REGISTER\") \u0026\u0026 !ds_is_from_list()) {\n\t\tif (t_check_status(\"403|[5-6][0-9][0-9]\")) {\n\t\t\tif ($sht(failedauth=\u003e$si) != $null)\n\t\t\t\t$sht(failedauth=\u003e$si) = $sht(failedauth=\u003e$si) + 1;\n\t\t\telse\n\t\t\t\t$sht(failedauth=\u003e$si) = 1;\n\t\t\tif ($sht(failedauth=\u003e$si) \u003e 10) {\n\t\t\t\txlog(\"L_ALERT\",\"ALERT: blocking $rm from $fu (IP:$si:$sp), more than 5 failed auth requests!\\n\");\n\t\t\t\txlog(\"Blocking traffic from $si\\n\");\n\t\t\t\t$sht(ipban=\u003e$si) = 1;\n\t\t\t}\n\t\t}\n\t}\n#!endif\n\t# Choose another gateway, in case we\n\t# - get a local generated \"408\"\n\t# - receive a 5xx or 6xx reply from the proxy.\n\tif (t_branch_timeout() || t_check_status(\"[5-6]..\")) {\n\t\tif (ds_next_dst()) {\n\t\t\t# Do Failover in case problems:\t\t\n\t\t\tt_on_failure(\"SBC_failure\");\n\t\t\tt_relay();\n\t\t} else {\n\t\t\t# Add a header, to indicate the phone should try again in 30 seconds.\n\t\t\tappend_hf(\"Retry-After: 30\\r\\n\");\n\t\t\tsend_reply(\"504\", \"Server Time-Out\");\n\t\t}\n\t\texit;\n\t}\n}\n\n# Notify Route:                                                     #\n#####################################################################\nroute[NOTIFY]\n{\n\txlog(\"L_DBG\", \"IMS: INSIDE NOTIFY\\n\");\n\tif (reginfo_handle_notify(\"pcscf_location\")) {\n\t\tsend_reply(\"200\",\"OK - P-CSCF processed notification\");\n\t\tbreak;\n\t} else {\n\t\tt_reply(\"500\",\"Error encountered while processing notification\");\n\t\tbreak;\n\t}\n}\n\n#!ifdef WITH_NATPING\n# NATPING Route:                                                    #\n#####################################################################\nroute[NATPING] {\n\troute(preload_pcscf);\n\n\tsht_lock(\"natping=\u003enatpinglock\");\n\tsht_iterator_start(\"nat_iterator\", \"natping\");\n\twhile(sht_iterator_next(\"nat_iterator\")) {\n\t\txnotice(\"OPTIONS to $shtitval(nat_iterator) via $shtitkey(nat_iterator)...\\n\");\n\t\t$uac_req(method) = \"OPTIONS\";\n\t\t$uac_req(ruri) = $shtitval(nat_iterator);\n\t\t$uac_req(furi) = PCSCF_URL;\n\t\t$uac_req(sock) = $sht(natpingfrom=\u003e$shtitkey(nat_iterator));\n\t\t$uac_req(turi) = $shtitval(nat_iterator);\n\t\t$uac_req(ouri) = $shtitkey(nat_iterator); \n\t\t$uac_req(evroute) = 1;\n\t\tuac_req_send();\t\n\t}\n\tsht_iterator_end(\"nat_iterator\");\n\tsht_unlock(\"natping=\u003enatpinglock\");\n}\n\nevent_route[uac:reply] {\n##!ifdef WITH_DEBUG\n\txnotice(\"request sent to $uac_req(ruri) completed with code: $uac_req(evcode), Type $uac_req(evtype)\\n\");\n##!endif\n\tif (($uac_req(evtype) != 1) || ($uac_req(evcode) != 200)) {\n\t\tif ($sht(natpingfail=\u003e$uac_req(ouri)) == $null) {\n\t\t\t$sht(natpingfail=\u003e$uac_req(ouri)) = 1;\n\t\t} else {\n\t\t\t$sht(natpingfail=\u003e$uac_req(ouri)) = $sht(natpingfail=\u003e$uac_req(ouri)) + 1;\n\t\t}\n\t\txlog(\"  request sent to $uac_req(ruri): Fail Counter is $sht(natpingfail=\u003e$uac_req(ouri))\\n\");\n\t\tif ($sht(natpingfail=\u003e$uac_req(ouri)) \u003e 10) {\n\t\t\tif ($(uac_req(ouri){uri.transport}) == \"tcp\") {\n\t\t\t\t$var(alias) = \"alias=\"+$(uac_req(ouri){uri.host})+\"~\"+$(uac_req(ouri){uri.port})+\"~2\";\n\t\t\t} else if ($(uac_req(ouri){uri.transport}) == \"tls\") {\n\t\t\t\t$var(alias) = \"alias=\"+$(uac_req(ouri){uri.host})+\"~\"+$(uac_req(ouri){uri.port})+\"~3\";\n\t\t\t} else {\n\t\t\t\t$var(alias) = \"alias=\"+$(uac_req(ouri){uri.host})+\"~\"+$(uac_req(ouri){uri.port})+\"~1\";\n\t\t\t}\n\t\t\txlog(\"  Unregistering $uac_req(ruri);$var(alias)\\n\");\n\t\t\tsetdebug(\"9\");\n#!ifdef WITH_IPSEC\n\t\t\tipsec_destroy_by_contact(\"pcscf_location\", \"$uac_req(ruri);$var(alias)\", \"$(uac_req(ouri){uri.host})\", \"$(uac_req(ouri){uri.port})\");\n#!endif\n\t\t\tpcscf_unregister(\"pcscf_location\", \"$uac_req(ruri);$var(alias)\", \"$(uac_req(ouri){uri.host})\", \"$(uac_req(ouri){uri.port})\");\n\t\t\tresetdebug();\n\t\t\tsht_lock(\"natping=\u003enatpinglock\");\n\t\t\t$sht(natping=\u003e$uac_req(ouri)) = $null;\n\t\t\tsht_unlock(\"natping=\u003enatpinglock\");\n\t\t\t$sht(natpingfail=\u003e$uac_req(ouri)) = $null;\n\n\t\t\tsht_lock(\"natpingfrom=\u003enatpingfromlock\");\n\t\t\t$sht(natpingfrom=\u003e$uac_req(ouri)) = $null;\n\t\t\tsht_unlock(\"natpingfrom=\u003enatpingfromlock\");\n\t\t\t$sht(natpingfail=\u003e$uac_req(ouri)) = $null;\n\t\t}\n\t} else {\n\t\t$sht(natpingfail=\u003e$uac_req(ouri)) = $null;\n\t}\n}\n\nevent_route[htable:expired:natping] {\n\txlog(\"natping record expired $shtrecord(key) =\u003e $shtrecord(value)\\n\");\n}\n\nevent_route[htable:mod-init] {\n\txlog(\"event_route[htable:mod-init] \\n\");\n}\n\nroute[preload_pcscf] {\n\tif ($shv(preload_pcscf) == 1) return;\n\t$shv(preload_pcscf) = 1;\n\n\tsql_query(\"pcscf\", \"select aor, received, received_port, received_proto from pcscf_location;\", \"resultset\");\n\txlog(\"L_INFO\", \"Preloading NAT-PING. Rows: $dbr(resultset=\u003erows)\\n\");\n\tif($dbr(resultset=\u003erows)\u003e0) {\n\t\t$var(i) = 0;\n\t\twhile($var(i) \u003c $dbr(resultset=\u003erows)) {\n\t\t\t$var(ouri) = \"sip:\"+$dbr(resultset=\u003e[$var(i),1])+\":\"+$dbr(resultset=\u003e[$var(i),2]);\n\t\t\tif ($dbr(resultset=\u003e[$var(i),3]) == 2) {\n\t\t\t\t$var(ouri) = $var(ouri)+\";transport=tcp\";\n\t\t\t} else if ($dbr(resultset=\u003e[$var(i),3]) == 3) {\n\t\t\t\t$var(ouri) = $var(ouri)+\";transport=tls\";\n\t\t\t}\n\t\t\t$var(noalias) = $(dbr(resultset=\u003e[$var(i),0]){re.subst,/^(.*);alias=.*/\\1/}{nameaddr.uri});\n\t\t\t# xlog(\"$$var(noalias) =\u003e $var(noalias) (via $var(ouri))\\n\");\n\t\t\tsht_lock(\"natping=\u003enatpinglock\");\n\t\t\t$sht(natping=\u003e$var(ouri)) = $var(noalias);\n\t\t\tsht_unlock(\"natping=\u003enatpinglock\");\n\t\t\t$var(i) = $var(i) + 1;\n\t\t}\n\t}\n\tsql_result_free(\"resultset\");\n}\n#!endif\n\n#!ifdef WITH_N5\n\n# 5G N5 HTTP2 Server routing script basic code\nevent_route[nghttp2:request] {\n\txinfo(\"request: $nghttp2(method) - url: $nghttp2(path) - data: [$nghttp2(data)]\\n\");\n\n\t# Check if the requested URL is /nf-status-notify\n\tif ($nghttp2(path) == \"/nf-status-notify\") {\n\t\tnghttp2_reply_header(\"Content-Type\", \"text/html\");\n\t\tnghttp2_reply_header(\"Server:\", \"AF\");\n\t\tnghttp2_reply(\"200\", \"\u003chtml\u003e\u003cbody\u003ePCF registered at PCSCF\u003c/body\u003e\u003c/html\u003e\");\n\t} else if ($nghttp2(path) == \"/terminate\") {\n\t\tnghttp2_reply_header(\"accept\", \"application/json\");\n\t\tnghttp2_reply_header(\"accept\", \"application/problem+json\");\n\t\tnghttp2_reply_header(\"Content-Type\", \"application/json\");\n\t\tnghttp2_reply_header(\"Server\", \"AF\");\n\t\tnghttp2_reply(\"204\", \"No Content\");\n\t} else {\n\t\t# Optionally handle other URLs or do nothing\n\t\tnghttp2_reply_header(\"accept\", \"application/json\");\n\t\tnghttp2_reply_header(\"accept\", \"application/problem+json\");\n\t\tnghttp2_reply_header(\"Content-Type\", \"application/json\");\n\t\tnghttp2_reply_header(\"Server\", \"AF\");\n\t\tnghttp2_reply(\"404\", \"Not Found\");\n\t}\n}\n\nroute[NRF_NFM] {\n\tif ($var(n5_hb_fail_count) \u003e 5) {\n\t\txlog(\"L_ERR\", \"PCSCF NF no longer registered at SCP. Re-attempting registration!!\\n\");\n\t\t$var(n5_initalized) = 0;\n\t}\n\n\t$var(time_now) = $_s($timef(%a, %d %b %Y %H:%M:%S %Z));\n\n\t# TODO: Send at heartbeat intervals received in reponse to NF registration  \n\tif ($var(n5_initalized) == 1) {\n\t\t# Send Heartbeat\n\t\t$var(nf_hb_headers) = \"content-type: application/json-patch+json\\r\\n\";\n\t\t$var(nf_hb_headers) = $var(nf_hb_headers) + \"accept: application/json,application/problem+json\\r\\n\";\n\t\t$var(nf_hb_headers) = $var(nf_hb_headers) + \"3gpp-sbi-discovery-target-nf-type: NRF\\r\\n\";\n\t\t$var(nf_hb_headers) = $var(nf_hb_headers) + \"3gpp-sbi-max-rsp-time: 10000\\r\\n\";\n\t\t$var(nf_hb_headers) = $var(nf_hb_headers) + \"3gpp-sbi-discovery-service-names: nnrf-nfm\\r\\n\";\n\t\t$var(nf_hb_headers) = $var(nf_hb_headers) + \"3gpp-sbi-sender-timestamp: \" + $var(time_now);\n\n\t\t$var(nf_hb_json_body) ='[]';\n\t\t$var(nf_hb_body) = '{\n\t\t\t\"op\": \"replace\",\n\t\t\t\"path\": \"/nfStatus\",\n\t\t\t\"value\": \"REGISTERED\"\n\t\t}';\n\t\tjansson_append(\"obj\", \"\", $var(nf_hb_body), \"$var(nf_hb_json_body)\");\n\t\t$var(nf_hb_body) = '{\n\t\t\t\"op\": \"replace\",\n\t\t\t\"path\": \"/load\",\n\t\t\t\"value\": 0\n\t\t}';\n\t\tjansson_append(\"obj\", \"\", $var(nf_hb_body), \"$var(nf_hb_json_body)\");\n\n\t\thttp_client_request_v2pk(\"PATCH\", \"http://SCP_BIND_IP:SCP_BIND_PORT/nnrf-nfm/v1/nf-instances/$var(pcscf_uuid)\", \"$var(nf_hb_json_body)\", \"$var(nf_hb_headers)\", \"$var(nf_hb_result)\");\n\t\tswitch ($rc) {\n\t\t\tcase 204:\n\t\t\t\t$var(n5_hb_fail_count) = 0;\n\t\t\t\tbreak;\n\t\t\tdefault:\n\t\t\t\t$var(n5_hb_fail_count) = $var(n5_hb_fail_count) + 1;\n\t\t\t\treturn;\n\t\t}\n\t\treturn;\n\t}\n\n\t# Generate UUID for PCSCF\n\t$var(pcscf_uuid) = $uuid(g);\n\n\t# Register NF\n\t$var(nf_reg_headers) = \"content-type: application/json\\r\\n\";\n\t$var(nf_reg_headers) = $var(nf_reg_headers) + \"accept: application/json,application/problem+json\\r\\n\";\n\t$var(nf_reg_headers) = $var(nf_reg_headers) + \"3gpp-sbi-discovery-target-nf-type: NRF\\r\\n\";\n\t$var(nf_reg_headers) = $var(nf_reg_headers) + \"3gpp-sbi-max-rsp-time: 10000\\r\\n\";\n\t$var(nf_reg_headers) = $var(nf_reg_headers) + \"3gpp-sbi-discovery-service-names: nnrf-nfm\\r\\n\";\n\t$var(nf_reg_headers) = $var(nf_reg_headers) + \"3gpp-sbi-sender-timestamp: \" + $var(time_now);\n\n\t$var(nf_reg_body) = '{\n\t\t\"nfInstanceId\": \"PCSCF_UUID\",\n\t\t\"nfType\":   \"AF\",\n\t\t\"nfStatus\": \"REGISTERED\",\n\t\t\"ipv4Addresses\": [\"N5_BIND_IP\"],\n\t\t\"allowedNfTypes\": [\"SCP\", \"PCF\"],\n\t\t\"priority\": 0,\n\t\t\"capacity\": 100,\n\t\t\"load\": 0,\n\t\t\"nfServiceList\": {\n\t\t\t\"PCSCF_UUID\": {\n\t\t\t\t\"serviceInstanceId\": \"PCSCF_UUID\",\n\t\t\t\t\"serviceName\": \"npcf-policyauthorization\",\n\t\t\t\t\"versions\": [\n\t\t\t\t\t{\n\t\t\t\t\t\t\"apiVersionInUri\": \"v2\",\n\t\t\t\t\t\t\"apiFullVersion\": \"2.0.0\"\n\t\t\t\t\t}\n\t\t\t\t],\n\t\t\t\t\"scheme\": \"http\",\n\t\t\t\t\"nfServiceStatus\": \"REGISTERED\",\n\t\t\t\t\"ipEndPoints\": [\n\t\t\t\t\t{\n\t\t\t\t\t\t\"ipv4Address\": \"N5_BIND_IP\",\n\t\t\t\t\t\t\"port\": N5_BIND_PORT\n\t\t\t\t\t}\n\t\t\t\t],\n\t\t\t\t\"allowedNfTypes\": [\n\t\t\t\t\t\"PCF\"\n\t\t\t\t],\n\t\t\t\t\"priority\": 0,\n\t\t\t\t\"capacity\": 100,\n\t\t\t\t\"load\": 0\n\t\t\t}\n\t\t},\n\t\t\"nfProfileChangesSupportInd\": true\n\t}';\n\t$var(nf_reg_body) = $(var(nf_reg_body){re.subst,/PCSCF_UUID/$var(pcscf_uuid)/g});\n\tjansson_append(\"obj\", \"\", \"$var(nf_reg_body)\", \"$var(nf_reg_json_body)\");\n\n\thttp_client_request_v2pk(\"PUT\", \"http://SCP_BIND_IP:SCP_BIND_PORT/nnrf-nfm/v1/nf-instances/$var(pcscf_uuid)\", \"$var(nf_reg_json_body)\", \"$var(nf_reg_headers)\", \"$var(nf_reg_result)\");\n\tswitch ($rc) {\n\t\tcase 201:\n\t\t\txlog(\"L_INFO\", \"P-CSCF NF registered successfully at SCP\\n\");\n\t\t\t$var(n5_initalized) = 1;\n\t\t\t$var(n5_hb_fail_count) = 0;\n\t\t\troute(NRF_NFM_SUBSCRIBE_PCF);\n\t\t\tbreak;\n\t\tdefault:\n\t\t\txlog(\"L_ERR\", \"P-CSCF NF failed to register at SCP with code=$rc\\n\");\n\t\t\treturn;\n\t}\n}\n\nroute[NRF_NFM_SUBSCRIBE_PCF] {\n\t# Subscribe to PCF NF registration notification\n\t$var(time_now) = $_s($timef(%a, %d %b %Y %H:%M:%S %Z));\n\t$var(pcf_subc_headers) = \"content-type: application/json\\r\\n\";\n\t$var(pcf_subc_headers) = $var(pcf_subc_headers) + \"accept: application/json,application/problem+json\\r\\n\";\n\t$var(pcf_subc_headers) = $var(pcf_subc_headers) + \"3gpp-sbi-discovery-target-nf-type: NRF\\r\\n\";\n\t$var(pcf_subc_headers) = $var(pcf_subc_headers) + \"3gpp-sbi-callback: Nnrf_NFManagement_NFStatusNotify\\r\\n\";\n\t$var(pcf_subc_headers) = $var(pcf_subc_headers) + \"3gpp-sbi-max-rsp-time: 10000\\r\\n\";\n\t$var(pcf_subc_headers) = $var(pcf_subc_headers) + \"3gpp-sbi-discovery-service-names: nnrf-nfm\\r\\n\";\n\t$var(pcf_subc_headers) = $var(pcf_subc_headers) + \"3gpp-sbi-sender-timestamp: \" + $var(time_now);\n\n\t$var(pcf_subc_body) = '{\n\t\t\"nfStatusNotificationUri\": \"http://N5_BIND_IP:N5_BIND_PORT/nnrf-nfm/v1/nf-status-notify\",\n\t\t\"reqNfInstanceId\": \"PCSCF_UUID\",\n\t\t\"subscrCond\": {\n\t\t\t\"nfType\": \"PCF\"\n\t\t},\n\t\t\"reqNfType\": \"AF\",\n\t\t\"requesterFeatures\": \"1\"\n\t}';\n\t$var(pcf_subc_body) = $(var(pcf_subc_body){re.subst,/PCSCF_UUID/$var(pcscf_uuid)/g});\n\tjansson_append(\"obj\", \"\", \"$var(pcf_subc_body)\", \"$var(pcf_subc_json_body)\");\n\n\thttp_client_request_v2pk(\"POST\", \"http://SCP_BIND_IP:SCP_BIND_PORT/nnrf-nfm/v1/subscriptions\", \"$var(pcf_subc_json_body)\", \"$var(pcf_subc_headers)\", \"$var(pcf_subc_result)\");\n\tswitch ($rc) {\n\t\tcase 201:\n\t\t\txlog(\"L_INFO\", \"P-CSCF NF subscribed for PCF NF registration notification\\n\");\n\t\t\tbreak;\n\t\tdefault:\n\t\t\txlog(\"L_ERR\", \"P-CSCF NF failed to subscribe for PCF NF registration notification\\n\");\n\t\t\treturn;\n\t}\n}\n#!endif\n\n#!ifdef WITH_XMLRPC\ninclude_file \"route/xmlrpc.cfg\"\n#!endif\n#!ifdef WITH_WEBSOCKET\ninclude_file \"route/websocket.cfg\"\n#!endif\ninclude_file \"route/register.cfg\"\ninclude_file \"route/rtp.cfg\"\ninclude_file \"route/mo.cfg\"\ninclude_file \"route/mt.cfg\"\n","pcscf.cfg":"# IP-Adress for incoming SIP-Traffic, in the following format:\n\n# SIP / UDP\nlisten=udp:PCSCF_IP:5060\n#listen=udp:PCSCF_IP:5060 advertise PCSCF_PUB_IP:5060\n# SIP / TCP\nlisten=tcp:PCSCF_IP:5060\n#listen=tcp:PCSCF_IP:5060 advertise PCSCF_PUB_IP:5060\n# SIP / TCP/TLS\n#listen=tls:PCSCF_IP:5061\n\n# IPSEC / UDP\n#!define IPSEC_LISTEN_ADDR \"PCSCF_IP\"\n##!define IPSEC_LISTEN_ADDR \"PCSCF_PUB_IP\"\n#!define IPSEC_CLIENT_PORT 5100\n#!define IPSEC_SERVER_PORT 6100\n#!define IPSEC_MAX_CONN 10\n\n# Value: 1 for true and 0 for false\n#!define IPSEC_DELETE_UNUSED_TUNNELS 1\n\n# Delay in seconds to delete contact from registrar\n#!define CONTACT_DELETE_DELAY 10\n\n# Logical OR of following flags:\n# - IPSEC_SEND_FORCE_SOCKET 1\n# - IPSEC_SETDSTURI_FULL 128\n# - IPSEC_FORWARD_USEVIA 256\n# - IPSEC_FORWARD_TRYTCP 512\n#!define IPSEC_FORWARD_FLAGS 897\n\n#!define RX_IMS_REG_DIALOG_DIRECTION 3\n\n# IP used in Rx_AAR_Register - IP of this P-CSCF, to be used in the flow for the AF-signaling\n#!define RX_AF_SIGNALING_IP \"PCSCF_IP\"\n# Uncomment the below line only when UE is behind double NAT (e.g. VoIP calling over WiFi/ CN behind a NAT)\n##!define RX_AF_SIGNALING_IP \"PCSCF_PUB_IP\"\n\n\n# IP and Port for incoming requests over N5 from 5G Core\n#!substdef \"/N5_BIND_IP/PCSCF_IP/g\"\n#!substdef \"/N5_BIND_PORT/7777/g\"\n\n# SCP IP and Port for NF registration and heartbeat\n#!substdef \"/SCP_BIND_IP/SCP_IP/g\"\n#!substdef \"/SCP_BIND_PORT/7777/g\"\n\nalias=pcscf.IMS_DOMAIN\n\n#!define MY_WS_PORT 80\n#!define MY_WSS_PORT 443\n\n#!define PCSCF_URL \"sip:pcscf.IMS_DOMAIN:5060\"\n\n#!define TCP_PROCESSES 8\n\n# Maximum lifetime of a subscription in seconds (same is advertised to UE)\n#!substdef \"/UE_SUBSCRIPTION_EXPIRES/SUBSCRIPTION_EXPIRES_ENV/g\"\n\n#!subst \"/NETWORKNAME/IMS_DOMAIN/g\"\n#!subst \"/HOSTNAME/pcscf.IMS_DOMAIN/g\"\n#!subst \"/PCRF_REALM/EPC_DOMAIN/g\"\n\n# SIP-Address of capturing node, if not set, capturing is disabled.\n##!define CAPTURE_NODE \"sip:127.0.0.1:9060\"\n\n# Allowed IPs for XML-RPC-Queries\n##!define XMLRPC_WHITELIST_1 \"127.0.0.1\"\n##!define XMLRPC_WHITELIST_2 \"127.0.0.1\"\n##!define XMLRPC_WHITELIST_3 \"127.0.0.1\"\n\n# Databases:\n#!define DB_URL \"mysql://pcscf:heslo@MYSQL_IP/pcscf\"\n##!define DB_URL2 \"con2=\u003emysql://pcscf:heslo@MYSQL_IP/pcscf\"\n\n#!define SQLOPS_DBURL \"pcscf=\u003emysql://pcscf:heslo@MYSQL_IP/pcscf\"\n\n#! Optional: Server-URL for Websocket-Requests\n##!define WEBSOCKET_WEBSERVER \"phone.ng-voice.com\"\n\n##!define TRF_FUNCTION \"trf.IMS_DOMAIN\"\n\n#\n# Several features can be enabled using '#!define WITH_FEATURE' directives:\n#\n# *** To run in debug mode: \n#     - define WITH_DEBUG\n#\n# *** To enable nat traversal execute:\n#     - define WITH_NAT\n#     - define the connection to the RTP-Proxy: RTPPROXY_ADDRESS\n#\n# *** To force alls calls through the RTP-Proxy\n#     - this will automagically enable NAT-Traversal\n#     - define FORCE_RTPRELAY\n#\n# *** To enable IPv4/IPv6 Translation (RTPProxy)\n#     - this will automagically enable NAT-Traversal\n#     - define WITH_RTPIPV4\n#\n# *** To enable TCP support execute:\n#     - define WITH_TCP\n#\n# *** To enable TLS support execute:\n#     - adjust CFGDIR/tls.cfg as needed\n#     - define WITH_TLS\n#     - this will automagically enable TCP\n#\n# *** To enable XMLRPC support execute:\n#     - define WITH_XMLRPC\n#     - this will automagically enable TCP\n#\n# *** To enable anti-flood detection execute:\n#     - adjust pike and htable=\u003eipban settings as needed (default is\n#       block if more than 16 requests in 2 seconds and ban for 300 seconds)\n#     - define WITH_ANTIFLOOD\n#\n# *** To enable the Rx-Interface:\n#     - Configure Rx-Diameter-Interface in pcscf.xml\n#     - define WITH_RX\n#\n# *** To enable a Homer SIP-Capter-Node:\n#     - define CAPTURE_NODE with a proper address\n#\n# *** To enable support for the SEMS-SBC\n#     - define WITH_SBC\n#     - configure dispatcher-list with a set of SBC's\n\n#\n# Enabled Features for this host:\n##!define WITH_DEBUG\n##!define WITH_DEBUG_TRACE\n#!define WITH_NAT\n##!define WITH_NATPING\n#!define FORCE_RTPRELAY\n##!define WITH_TLS\n##!define WITH_XMLRPC\n##!define WITH_IPBLOCK\n##!define WITH_ANTIFLOOD\n#!define WITH_RX\n##!define WITH_N5\n#!define WITH_TCP\n##!define WITH_RTPIPV4\n##!define WITH_SBC\n##!define WITH_SBC_CALL\n##!define WITH_REGINFO\n##!define WITH_RTPPING\n##!define WITH_WEBSOCKET\n#!define WITH_IPSEC\n#!define WITH_IMS_HDR_CACHE\n#!define WITH_PING_UDP\n#!define WITH_PING_TCP\n","pcscf.xml":"\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cDiameterPeer \n\tFQDN=\"pcscf.IMS_DOMAIN\"\n\tRealm=\"IMS_DOMAIN\"\n\tVendor_Id=\"10415\"\n\tProduct_Name=\"CDiameterPeer\"\n\tAcceptUnknownPeers=\"1\"\n\tDropUnknownOnDisconnect=\"1\"\n\tTc=\"30\"\n\tWorkers=\"4\"\n\tQueueLength=\"8\"\n\tTransactionTimeout=\"5\"\n\tSessionsHashSize=\"128\"\n\tDefaultAuthSessionTimeout=\"SUBSCRIPTION_EXPIRES_ENV\"\n\tMaxAuthSessionTimeout=\"SUBSCRIPTION_EXPIRES_ENV\"\n\u003e\n\t\u003cPeer FQDN=\"pcrf.EPC_DOMAIN\" Realm=\"EPC_DOMAIN\" port=\"PCRF_BIND_PORT\"/\u003e \n\n\t\u003cAcceptor port=\"PCSCF_BIND_PORT\" bind=\"PCSCF_IP\"/\u003e\n\n\t\u003cAuth id=\"16777236\" vendor=\"10415\"/\u003e \u003c!-- 3GPP Rx --\u003e\n\t\u003cAuth id=\"16777236\" vendor=\"0\"/\u003e \u003c!-- 3GPP Rx --\u003e\n\n\t\u003cDefaultRoute FQDN=\"pcrf.EPC_DOMAIN\" metric=\"10\"/\u003e\n\n\u003c/DiameterPeer\u003e\n","pcscf_init.sh":"#!/bin/bash\n\n# BSD 2-Clause License\n\n# Copyright (c) 2020-2025, Supreeth Herle\n# All rights reserved.\n\n# Redistribution and use in source and binary forms, with or without\n# modification, are permitted provided that the following conditions are met:\n\n# 1. Redistributions of source code must retain the above copyright notice, this\n#    list of conditions and the following disclaimer.\n\n# 2. Redistributions in binary form must reproduce the above copyright notice,\n#    this list of conditions and the following disclaimer in the documentation\n#    and/or other materials provided with the distribution.\n\n# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\n# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\n# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\n# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\n# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\n# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\n# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\n# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\n# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nsh -c \"echo 1 \u003e /proc/sys/net/ipv4/ip_nonlocal_bind\"\nsh -c \"echo 1 \u003e /proc/sys/net/ipv6/ip_nonlocal_bind\"\n\n[ ${#MNC} == 3 ] \u0026\u0026 EPC_DOMAIN=\"epc.mnc${MNC}.mcc${MCC}.3gppnetwork.org\" || EPC_DOMAIN=\"epc.mnc0${MNC}.mcc${MCC}.3gppnetwork.org\"\n[ ${#MNC} == 3 ] \u0026\u0026 IMS_DOMAIN=\"ims.mnc${MNC}.mcc${MCC}.3gppnetwork.org\" || IMS_DOMAIN=\"ims.mnc0${MNC}.mcc${MCC}.3gppnetwork.org\"\n\nmkdir -p /etc/kamailio_pcscf\ncp /mnt/pcscf/pcscf.cfg /etc/kamailio_pcscf\ncp /mnt/pcscf/pcscf.xml /etc/kamailio_pcscf\ncp /mnt/pcscf/kamailio_pcscf.cfg /etc/kamailio_pcscf\ncp -r /mnt/pcscf/route /etc/kamailio_pcscf\ncp -r /mnt/pcscf/sems /etc/kamailio_pcscf\ncp /mnt/pcscf/tls.cfg /etc/kamailio_pcscf\ncp /mnt/pcscf/dispatcher.list /etc/kamailio_pcscf\n\nwhile ! mysqladmin ping -h ${MYSQL_IP} --silent; do\n\tsleep 5;\ndone\n\n# Sleep until permissions are set\nsleep 10;\n\n# Create PCSCF database, populate tables and grant privileges\nif [[ -z \"`mysql -u root -h ${MYSQL_IP} -qfsBe \"SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='pcscf'\" 2\u003e\u00261`\" ]];\nthen\n\tmysql -u root -h ${MYSQL_IP} -e \"create database pcscf;\"\n\tmysql -u root -h ${MYSQL_IP} pcscf \u003c /usr/local/src/kamailio/utils/kamctl/mysql/standard-create.sql\n\tmysql -u root -h ${MYSQL_IP} pcscf \u003c /usr/local/src/kamailio/utils/kamctl/mysql/presence-create.sql\n\tmysql -u root -h ${MYSQL_IP} pcscf \u003c /usr/local/src/kamailio/utils/kamctl/mysql/ims_usrloc_pcscf-create.sql\n\tmysql -u root -h ${MYSQL_IP} pcscf \u003c /usr/local/src/kamailio/utils/kamctl/mysql/ims_dialog-create.sql\n\tPCSCF_USER_EXISTS=`mysql -u root -h ${MYSQL_IP} -s -N -e \"SELECT EXISTS(SELECT 1 FROM mysql.user WHERE User = 'pcscf' AND Host = '%')\"`\n\tif [[ \"$PCSCF_USER_EXISTS\" == 0 ]]\n\tthen\n\t\tmysql -u root -h ${MYSQL_IP} -e \"CREATE USER 'pcscf'@'%' IDENTIFIED WITH mysql_native_password BY 'heslo'\";\n\t\tmysql -u root -h ${MYSQL_IP} -e \"CREATE USER 'pcscf'@'$PCSCF_IP' IDENTIFIED WITH mysql_native_password BY 'heslo'\";\n\t\tmysql -u root -h ${MYSQL_IP} -e \"GRANT ALL ON pcscf.* TO 'pcscf'@'%'\";\n\t\tmysql -u root -h ${MYSQL_IP} -e \"GRANT ALL ON pcscf.* TO 'pcscf'@'$PCSCF_IP'\";\n\t\tmysql -u root -h ${MYSQL_IP} -e \"FLUSH PRIVILEGES;\"\n\tfi\nfi\n\nif [[ ${DEPLOY_MODE} == 5G ]];\nthen\n    sed -i 's|#!define WITH_RX\\b|##!define WITH_RX|g' /etc/kamailio_pcscf/pcscf.cfg\n\tsed -i 's|##!define WITH_N5\\b|#!define WITH_N5|g' /etc/kamailio_pcscf/pcscf.cfg\nfi\n\nSUBSCRIPTION_EXPIRES_ENV=3600\n\nsed -i 's|PCSCF_IP|'$PCSCF_IP'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|SUBSCRIPTION_EXPIRES_ENV|'$SUBSCRIPTION_EXPIRES_ENV'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|SCP_IP|'$SCP_IP'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|PCSCF_PUB_IP|'$PCSCF_PUB_IP'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|IMS_DOMAIN|'$IMS_DOMAIN'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|EPC_DOMAIN|'$EPC_DOMAIN'|g' /etc/kamailio_pcscf/pcscf.cfg\nsed -i 's|MYSQL_IP|'$MYSQL_IP'|g' /etc/kamailio_pcscf/pcscf.cfg\n\nsed -i 's|PCSCF_IP|'$PCSCF_IP'|g' /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|SUBSCRIPTION_EXPIRES_ENV|'$SUBSCRIPTION_EXPIRES_ENV'|g' /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|IMS_DOMAIN|'$IMS_DOMAIN'|g' /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|EPC_DOMAIN|'$EPC_DOMAIN'|g' /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|PCRF_BIND_PORT|'$PCRF_BIND_PORT'|g' /etc/kamailio_pcscf/pcscf.xml\nsed -i 's|PCSCF_BIND_PORT|'$PCSCF_BIND_PORT'|g' /etc/kamailio_pcscf/pcscf.xml\n\nsed -i 's|RTPENGINE_IP|'$RTPENGINE_IP'|g' /etc/kamailio_pcscf/kamailio_pcscf.cfg\nsed -i 's|RTPENGINE_IP|'$RTPENGINE_IP'|g' /etc/kamailio_pcscf/route/rtp.cfg\n\n# Add static route to route traffic back to UE as there is not NATing\nip r add ${UE_IPV4_IMS} via ${UPF_IP}\n# Route needed for VoWiFi client where internet APN is used\nip r add ${UE_IPV4_INTERNET} via ${UPF_IP}\n\nmkdir -p /var/run/kamailio_pcscf\nrm -f /kamailio_pcscf.pid\nexec kamailio -f /etc/kamailio_pcscf/kamailio_pcscf.cfg -P /kamailio_pcscf.pid -DD -E -e $@\n\n# Sync docker time\n#ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \u0026\u0026 echo $TZ \u003e /etc/timezone\n","tls.cfg":"#\n# TLS Configuration File\n#\n\n# This is the default server domain, settings\n# in this domain will be used for all incoming\n# connections that do not match any other server\n# domain in this configuration file.\n#\n[server:default]\nmethod = SSLv23\nverify_certificate = no\nrequire_certificate = no\nprivate_key = /etc/kamailio/kamailio-selfsigned.key\ncertificate = /etc/kamailio/kamailio-selfsigned.pem\n"},"kind":"ConfigMap","metadata":{"annotations":{},"creationTimestamp":null,"name":"pcscf-config","namespace":"ims"}}
+  creationTimestamp: "2025-09-28T18:15:31Z"
+  name: pcscf-config
+  namespace: ims
+  resourceVersion: "308480"
+  uid: a697170a-f360-43d0-bdb5-8cf13b0e2787
