@@ -21,29 +21,29 @@ spec:
             - /bin/bash
             - -c
             - |
-              echo "Starting PCSCF with all required routes..."
+              echo "Starting PCSCF with PCRF connection via Rx interface..."
               
-              # Get HSS service IP and add to /etc/hosts
-              echo "=== Resolving HSS Service IP ==="
-              HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
-              if [ -z "$HSS_IP" ]; then
-                echo "Waiting for HSS service..."
+              # Get PCRF service IP and add to /etc/hosts
+              echo "=== Resolving PCRF Service IP ==="
+              PCRF_IP=$(getent hosts pcrf.ims.svc.cluster.local | awk '{ print $1 }')
+              if [ -z "$PCRF_IP" ]; then
+                echo "Waiting for PCRF service..."
                 for i in {1..30}; do
-                  HSS_IP=$(getent hosts hss.ims.svc.cluster.local | awk '{ print $1 }')
-                  if [ -n "$HSS_IP" ]; then
+                  PCRF_IP=$(getent hosts pcrf.ims.svc.cluster.local | awk '{ print $1 }')
+                  if [ -n "$PCRF_IP" ]; then
                     break
                   fi
                   sleep 2
                 done
               fi
               
-              echo "HSS Service IP: $HSS_IP"
+              echo "PCRF Service IP: $PCRF_IP"
               
-              # Add HSS to /etc/hosts
-              if [ -n "$HSS_IP" ]; then
-                sed -i '/hss.localdomain/d' /etc/hosts
-                echo "$HSS_IP hss.localdomain hss" >> /etc/hosts
-                echo "✓ Added hss.localdomain -> $HSS_IP to /etc/hosts"
+              # Add PCRF to /etc/hosts
+              if [ -n "$PCRF_IP" ]; then
+                sed -i '/pcrf.localdomain/d' /etc/hosts
+                echo "$PCRF_IP pcrf.localdomain pcrf" >> /etc/hosts
+                echo "✓ Added pcrf.localdomain -> $PCRF_IP to /etc/hosts"
               fi
               
               cp /etc/kamailio-config/* /usr/local/etc/kamailio/ 2>/dev/null || true
@@ -51,14 +51,14 @@ spec:
               
               POD_IP=$(hostname -i)
               MYSQL_SERVICE_IP="mysql.ims.svc.cluster.local"
-              HSS_SERVICE_IP="hss.ims.svc.cluster.local"
+              PCRF_SERVICE_IP="pcrf.ims.svc.cluster.local"
               echo "Pod IP: $POD_IP"
               
-              # Wait for HSS Diameter port
-              echo "Waiting for HSS Diameter port..."
+              # Wait for PCRF Diameter port (Rx interface)
+              echo "Waiting for PCRF Diameter port (Rx interface - port 3868)..."
               for i in {1..20}; do
-                if timeout 5 bash -c '</dev/tcp/hss.localdomain/3868' 2>/dev/null; then
-                  echo "✓ HSS Diameter port is ready!"
+                if timeout 5 bash -c '</dev/tcp/pcrf.localdomain/3868' 2>/dev/null; then
+                  echo "✓ PCRF Diameter port is ready!"
                   break
                 fi
                 sleep 3
@@ -74,7 +74,7 @@ spec:
               EOF
               echo "✓ dispatcher.list created"
               
-              echo "=== Creating pcscf.xml with proper Diameter configuration ==="
+              echo "=== Creating pcscf.xml with PCRF Rx interface (Application ID: 16777236) ==="
               cat > /etc/kamailio_pcscf/pcscf.xml << EOF
               <?xml version="1.0" encoding="UTF-8"?>
               <DiameterPeer
@@ -92,25 +92,20 @@ spec:
                       DefaultAuthSessionTimeout="3600"
                       MaxAuthSessionTimeout="3600"
               >
-                      <Peer FQDN="hss.localdomain" Realm="localdomain" port="3868"/>
+                      <Peer FQDN="pcrf.localdomain" Realm="localdomain" port="3868"/>
 
                       <Acceptor port="3868" bind="$POD_IP"/>
                       <Acceptor port="3868" bind="0.0.0.0"/>
 
-                      <Auth id="16777216" vendor="10415"/>
-                      <Auth id="16777216" vendor="4491"/>
-                      <Auth id="16777216" vendor="13019"/>
-                      <Auth id="16777216" vendor="0"/>
-
-                      <Auth id="4" vendor="10415"/>
-                      <Acct id="4" vendor="10415"/>
+                      <Auth id="16777236" vendor="10415"/>
+                      <Auth id="16777236" vendor="0"/>
 
                       <SupportedVendor vendor="10415"/>
 
-                      <DefaultRoute FQDN="hss.localdomain" metric="10"/>
+                      <DefaultRoute FQDN="pcrf.localdomain" metric="10"/>
               </DiameterPeer>
               EOF
-              echo "✓ pcscf.xml created with proper Diameter configuration"
+              echo "✓ pcscf.xml created with PCRF Rx interface configuration"
               
               echo "=== Creating route files ==="
               
@@ -150,7 +145,6 @@ spec:
               cat > /usr/local/etc/kamailio/route/rtp.cfg << 'EOF'
               # RTPEngine désactivé - routes vides
               route[RTP] {
-                  # RTPEngine disabled - no media relay
                   xlog("L_INFO", "RTP route called but rtpengine is disabled\n");
                   return;
               }
@@ -230,7 +224,6 @@ spec:
               
               echo "=== Injecting NAT routes directly into main config ==="
               
-              # Add module parameters at the beginning of the config
               sed -i '/^#!KAMAILIO/a \
               \
               # NAT module parameters\
@@ -295,13 +288,13 @@ spec:
               echo "✓ NAT routes injected"
               
               echo "=== Variable replacement ==="
-              HSS_IP="hss.ims.svc.cluster.local"
+              PCRF_IP="pcrf.ims.svc.cluster.local"
               find /usr/local/etc/kamailio -name "*.cfg" -o -name "*.xml" | while read file; do
                 sed -i "s/PCSCF_IP/$POD_IP/g" "$file"
                 sed -i "s/LISTEN_IP/$POD_IP/g" "$file"
                 sed -i "s/NETWORK_IP/$POD_IP/g" "$file"
                 sed -i "s/MYSQL_IP/$MYSQL_SERVICE_IP/g" "$file"
-                sed -i "s/HSS_IP/$HSS_SERVICE_IP/g" "$file"
+                sed -i "s/PCRF_IP/$PCRF_SERVICE_IP/g" "$file"
                 sed -i "s/IMS_DOMAIN/localdomain/g" "$file"
                 sed -i 's/UE_SUBSCRIPTION_EXPIRES/3605/g' "$file"
                 sed -i 's/SUBSCRIPTION_EXPIRES_ENV/3605/g' "$file"
@@ -315,18 +308,15 @@ spec:
               echo "✓ Variables replaced"
               
               echo "=== Désactivation de RTPEngine ==="
-              # Commenter loadmodule rtpengine si présent
               find /usr/local/etc/kamailio -name "*.cfg" | while read file; do
                 sed -i 's/^[[:space:]]*loadmodule[[:space:]]*"rtpengine\.so"/#loadmodule "rtpengine.so" # DISABLED/g' "$file"
                 sed -i 's/^[[:space:]]*loadmodule[[:space:]]*"rtpengine"/#loadmodule "rtpengine" # DISABLED/g' "$file"
               done
               
-              # Commenter modparam rtpengine si présent
               find /usr/local/etc/kamailio -name "*.cfg" | while read file; do
                 sed -i 's/^[[:space:]]*modparam[[:space:]]*([[:space:]]*"rtpengine"/#modparam("rtpengine" # DISABLED/g' "$file"
               done
               
-              # Remplacer les appels rtpengine_manage() par des no-ops
               find /usr/local/etc/kamailio -name "*.cfg" | while read file; do
                 sed -i 's/rtpengine_manage()/# rtpengine_manage() # DISABLED/g' "$file"
                 sed -i 's/rtpengine_offer()/# rtpengine_offer() # DISABLED/g' "$file"
@@ -336,15 +326,14 @@ spec:
               
               echo "✓ RTPEngine disabled in all config files"
               
-              # Verification
               echo "=== Verification ==="
               echo "DNS resolution test:"
-              getent hosts hss.localdomain
+              getent hosts pcrf.localdomain
               echo ""
               echo "Connectivity test:"
-              timeout 3 bash -c '</dev/tcp/hss.localdomain/3868' && echo "✓ Can connect to HSS" || echo "✗ Cannot connect to HSS"
+              timeout 3 bash -c '</dev/tcp/pcrf.localdomain/3868' && echo "✓ Can connect to PCRF via Rx interface" || echo "✗ Cannot connect to PCRF"
               echo ""
-              echo "Diameter Configuration:"
+              echo "Diameter Configuration (Rx interface to PCRF):"
               cat /etc/kamailio_pcscf/pcscf.xml
               
               echo "=== Balancing preprocessor directives ==="
@@ -372,7 +361,7 @@ spec:
               
               echo "=== Testing Kamailio configuration ==="
               if kamailio -c -f /usr/local/etc/kamailio/kamailio_pcscf.cfg; then
-                echo "✓ Configuration OK - Starting Kamailio..."
+                echo "✓ Configuration OK - Starting Kamailio with PCRF Rx interface..."
                 exec kamailio -f /usr/local/etc/kamailio/kamailio_pcscf.cfg -P /tmp/kamailio.pid -DD -E -e
               else
                 echo "✗ Configuration error:"
