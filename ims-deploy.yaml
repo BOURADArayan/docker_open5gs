@@ -1,0 +1,236 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: mongo
+    command: --bind_ip 0.0.0.0
+    env_file:
+      - .env
+    volumes:
+      - mongodbdata:/data/db
+      - mongodbdata:/data/configdb
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    expose:
+      - "27017/udp"
+      - "27017/tcp"
+    networks:
+      default:
+        ipv4_address: ${MONGO_IP}
+    restart: unless-stopped
+
+  mysql:
+    build: ./mysql
+    image: docker_mysql
+    container_name: mysql
+    env_file:
+      - .env
+    volumes:
+      - dbdata:/var/lib/mysql
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    expose:
+      - "3306/tcp"
+    networks:
+      default:
+        ipv4_address: ${MYSQL_IP}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dns:
+    build: ./dns
+    image: docker_dns
+    container_name: dns
+    env_file:
+      - .env
+    volumes:
+      - ./dns:/mnt/dns
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    expose:
+      - "53/udp"
+    networks:
+      default:
+        ipv4_address: ${DNS_IP}
+    restart: unless-stopped
+
+  rtpengine:
+    build: ./rtpengine
+    image: docker_rtpengine
+    container_name: rtpengine
+    privileged: true
+    env_file:
+      - .env
+    volumes:
+      - ./rtpengine:/mnt/rtpengine
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - TABLE=0
+      - INTERFACE=${RTPENGINE_IP}
+      - LISTEN_NG=${RTPENGINE_IP}:2223
+      - PIDFILE=/run/ngcp-rtpengine-daemon.pid
+      - PORT_MAX=50000
+      - PORT_MIN=49000
+      - NO_FALLBACK=no
+      - TOS=184
+    expose:
+      - "2223/udp"
+      - "49000-50000/udp"
+    networks:
+      default:
+        ipv4_address: ${RTPENGINE_IP}
+    restart: unless-stopped
+
+  pyhss:
+    build: ./pyhss
+    image: docker_pyhss
+    container_name: pyhss
+    dns: ${DNS_IP}
+    volumes:
+      - ./pyhss:/mnt/pyhss
+      - ./pyhss/logs:/pyhss/log/
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      dns:
+        condition: service_started
+    expose:
+      - "${PYHSS_BIND_PORT}/tcp"
+      - "${PYHSS_BIND_PORT}/sctp"
+      - "8080/tcp"
+    ports:
+      - "8080:8080/tcp"
+    networks:
+      default:
+        ipv4_address: ${PYHSS_IP}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  icscf:
+    image: docker_kamailio
+    container_name: icscf
+    dns: ${DNS_IP}
+    volumes:
+      - ./icscf:/mnt/icscf
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    environment:
+      - COMPONENT_NAME=icscf
+    depends_on:
+      pyhss:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      dns:
+        condition: service_started
+    expose:
+      - "${ICSCF_BIND_PORT}/tcp"
+      - "${ICSCF_BIND_PORT}/sctp"
+      - "4060/udp"
+      - "4060/tcp"
+    networks:
+      default:
+        ipv4_address: ${ICSCF_IP}
+    restart: unless-stopped
+
+  scscf:
+    image: docker_kamailio
+    container_name: scscf
+    dns: ${DNS_IP}
+    volumes:
+      - ./scscf:/mnt/scscf
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    environment:
+      - COMPONENT_NAME=scscf
+    depends_on:
+      pyhss:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      dns:
+        condition: service_started
+    expose:
+      - "${SCSCF_BIND_PORT}/tcp"
+      - "${SCSCF_BIND_PORT}/sctp"
+      - "6060/udp"
+      - "6060/tcp"
+    networks:
+      default:
+        ipv4_address: ${SCSCF_IP}
+    restart: unless-stopped
+
+  pcscf:
+    image: docker_kamailio
+    container_name: pcscf
+    dns: ${DNS_IP}
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./pcscf:/mnt/pcscf
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    environment:
+      - COMPONENT_NAME=pcscf
+      - DEPLOY_MODE=4G
+    depends_on:
+      icscf:
+        condition: service_started
+      scscf:
+        condition: service_started
+      rtpengine:
+        condition: service_started
+      dns:
+        condition: service_started
+    expose:
+      - "${PCSCF_BIND_PORT}/tcp"
+      - "${PCSCF_BIND_PORT}/sctp"
+      - "5060/tcp"
+      - "5060/udp"
+      - "5100-5120/tcp"
+      - "5100-5120/udp"
+      - "6100-6120/tcp"
+      - "6100-6120/udp"
+    ports:
+      - "5060:5060/tcp"
+      - "5060:5060/udp"
+    networks:
+      default:
+        ipv4_address: ${PCSCF_IP}
+    restart: unless-stopped
+
+networks:
+  default:
+    name: docker_open5gs_ims
+    ipam:
+      config:
+        - subnet: ${TEST_NETWORK}
+
+volumes:
+  mongodbdata:
+    name: docker_open5gs_ims_mongodbdata
+  dbdata:
+    name: docker_open5gs_ims_dbdata

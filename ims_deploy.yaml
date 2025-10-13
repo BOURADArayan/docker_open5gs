@@ -1,0 +1,233 @@
+version: '3.8'
+
+services:
+  # ====================================
+  # BASE DE DONNÉES MONGODB
+  # ====================================
+  mongo:
+    image: mongo:6.0
+    container_name: mongo
+    command: --bind_ip 0.0.0.0
+    environment:
+      - MONGO_INITDB_DATABASE=open5gs
+    volumes:
+      - mongodbdata:/data/db
+      - mongodbdata:/data/configdb
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    expose:
+      - "27017/udp"
+      - "27017/tcp"
+    networks:
+      ims_network:
+        ipv4_address: ${MONGO_IP}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ====================================
+  # BASE DE DONNÉES MYSQL
+  # ====================================
+  mysql:
+    build: ./mysql
+    image: docker_mysql
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=linux
+      - MYSQL_ALLOW_EMPTY_PASSWORD=no
+    volumes:
+      - dbdata:/var/lib/mysql
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    expose:
+      - "3306/tcp"
+    networks:
+      ims_network:
+        ipv4_address: ${MYSQL_IP}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-plinux"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ====================================
+  # HSS (HOME SUBSCRIBER SERVER) - Open5GS
+  # ====================================
+  hss:
+    image: docker_open5gs
+    container_name: hss
+    environment:
+      - COMPONENT_NAME=hss
+      - MCC=${MCC}
+      - MNC=${MNC}
+    volumes:
+      - ./hss:/mnt/hss
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+    expose:
+      - "3868/tcp"
+      - "3868/sctp"
+      - "5868/tcp"
+      - "5868/sctp"
+    networks:
+      ims_network:
+        ipv4_address: ${HSS_IP}
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q 3868"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ====================================
+  # ICSCF (INTERROGATING CSCF) - Kamailio
+  # ====================================
+  icscf:
+    image: docker_kamailio
+    container_name: icscf
+    dns: ${DNS_IP:-8.8.8.8}
+    environment:
+      - COMPONENT_NAME=icscf
+      - MCC=${MCC}
+      - MNC=${MNC}
+    volumes:
+      - ./icscf:/mnt/icscf
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      hss:
+        condition: service_started
+    expose:
+      - "${ICSCF_BIND_PORT}/tcp"
+      - "${ICSCF_BIND_PORT}/sctp"
+      - "4060/udp"
+      - "4060/tcp"
+      - "5060/tcp"
+      - "5060/udp"
+    networks:
+      ims_network:
+        ipv4_address: ${ICSCF_IP}
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q 4060"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ====================================
+  # SCSCF (SERVING CSCF) - Kamailio
+  # ====================================
+  scscf:
+    image: docker_kamailio
+    container_name: scscf
+    dns: ${DNS_IP:-8.8.8.8}
+    environment:
+      - COMPONENT_NAME=scscf
+      - MCC=${MCC}
+      - MNC=${MNC}
+    volumes:
+      - ./scscf:/mnt/scscf
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      hss:
+        condition: service_started
+    expose:
+      - "${SCSCF_BIND_PORT}/tcp"
+      - "${SCSCF_BIND_PORT}/sctp"
+      - "6060/udp"
+      - "6060/tcp"
+      - "5060/tcp"
+      - "5060/udp"
+    networks:
+      ims_network:
+        ipv4_address: ${SCSCF_IP}
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q 6060"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ====================================
+  # PCSCF (PROXY CSCF) - Kamailio
+  # ====================================
+  pcscf:
+    image: docker_kamailio
+    container_name: pcscf
+    dns: ${DNS_IP:-8.8.8.8}
+    privileged: true
+    environment:
+      - COMPONENT_NAME=pcscf
+      - DEPLOY_MODE=4G
+      - MCC=${MCC}
+      - MNC=${MNC}
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    volumes:
+      - ./pcscf:/mnt/pcscf
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      icscf:
+        condition: service_started
+      scscf:
+        condition: service_started
+    expose:
+      - "${PCSCF_BIND_PORT}/tcp"
+      - "${PCSCF_BIND_PORT}/sctp"
+      - "5060/tcp"
+      - "5060/udp"
+      - "5100-5120/tcp"
+      - "5100-5120/udp"
+      - "6100-6120/tcp"
+      - "6100-6120/udp"
+    networks:
+      ims_network:
+        ipv4_address: ${PCSCF_IP}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q 5060"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ====================================
+# CONFIGURATION RÉSEAU
+# ====================================
+networks:
+  ims_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${TEST_NETWORK}
+
+# ====================================
+# VOLUMES PERSISTANTS
+# ====================================
+volumes:
+  mongodbdata:
+    driver: local
+  dbdata:
+    driver: local

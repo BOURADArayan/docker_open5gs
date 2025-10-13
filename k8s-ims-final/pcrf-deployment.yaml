@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcrf
+  namespace: ims
+  labels:
+    io.kompose.service: pcrf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: pcrf
+  template:
+    metadata:
+      labels:
+        io.kompose.service: pcrf
+    spec:
+      containers:
+        - name: pcrf
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_open5gs:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting PCRF Open5GS with MongoDB..."
+              mkdir -p /tmp/open5gs/logs
+              
+              # Update the MongoDB connection
+              sed -i 's|mongodb://localhost|mongodb://mongo|g' /open5gs/install/etc/open5gs/pcrf.yaml
+
+              # Modify pcrf.yaml metrics to listen on all interfaces
+              sed -i 's/address: 127.0.0.9/address: 0.0.0.0/' /open5gs/install/etc/open5gs/pcrf.yaml
+
+              # Update freeDiameter pcrf.conf to listen on all interfaces
+              sed -i 's|ListenOn = "127.0.0.9";|ListenOn = "0.0.0.0";|' /open5gs/install/etc/freeDiameter/pcrf.conf
+
+              # Comment out any existing peers to avoid duplicates
+              sed -i 's/ConnectPeer = "pcscf.localdomain"/#&/' /open5gs/install/etc/freeDiameter/pcrf.conf
+              sed -i 's/ConnectPeer = "pgw.localdomain"/#&/' /open5gs/install/etc/freeDiameter/pcrf.conf
+              sed -i 's/ConnectPeer = "smf.localdomain"/#&/' /open5gs/install/etc/freeDiameter/pcrf.conf
+
+              # Réduire la verbosité freeDiameter
+              echo "=== Reducing freeDiameter log verbosity ==="
+              sed -i 's/FD_LOG_ERROR/FD_LOG_NOTICE/g' /open5gs/install/etc/freeDiameter/pcrf.conf
+              sed -i 's/FD_LOG_DEBUG/FD_LOG_NOTICE/g' /open5gs/install/etc/freeDiameter/pcrf.conf
+              
+              # Désactiver l'extension dbg_msg_dumps
+              sed -i 's/LoadExtension.*dbg_msg_dumps/#&/' /open5gs/install/etc/freeDiameter/pcrf.conf
+              sed -i 's/LoadExtension.*dbg_msg_dump/#&/' /open5gs/install/etc/freeDiameter/pcrf.conf
+
+              # Configuration avancée freeDiameter pour réduire les erreurs
+              echo "=== Configuring freeDiameter connection parameters ==="
+              
+              # Insérer les paramètres d'optimisation
+              sed -i '/^Identity/a\# Optimizations for connection handling\nTcTimeout = 5;\nTwTimeout = 3;\nNoRelay;' /open5gs/install/etc/freeDiameter/pcrf.conf
+              
+              # Modifier TransactionTimeout si présent
+              sed -i 's/TransactionTimeout="[0-9]*"/TransactionTimeout="5"/g' /open5gs/install/etc/freeDiameter/pcrf.conf
+              
+              # Réduire le nombre de workers de 4 à 2
+              sed -i 's/Workers="[0-9]*"/Workers="2"/g' /open5gs/install/etc/freeDiameter/pcrf.conf
+
+              # Ajouter le peer avec paramètres optimisés
+              echo "" >> /open5gs/install/etc/freeDiameter/pcrf.conf
+              echo "# PCRF Diameter Peers Configuration" >> /open5gs/install/etc/freeDiameter/pcrf.conf
+              echo 'ConnectPeer = "pcscf.localdomain" { ConnectTo = "pcscf.ims.svc.cluster.local"; No_TLS; Port=3868; Tc=60; };' >> /open5gs/install/etc/freeDiameter/pcrf.conf
+
+              echo "=== PCRF freeDiameter configuration updated ==="
+              echo "Configured peers:"
+              grep "ConnectPeer.*localdomain" /open5gs/install/etc/freeDiameter/pcrf.conf
+              
+              echo "Connection parameters:"
+              grep -E "TcTimeout|TwTimeout|NoRelay|Workers" /open5gs/install/etc/freeDiameter/pcrf.conf | head -10
+              
+              echo "Log verbosity reduced to NOTICE level"
+
+              # Validate configuration
+              echo "=== Validating PCRF configuration ==="
+              if [ -f "/open5gs/install/etc/open5gs/pcrf.yaml" ]; then
+                echo "✓ PCRF YAML configuration exists"
+              else
+                echo "✗ PCRF YAML configuration missing"
+              fi
+              
+              if [ -f "/open5gs/install/etc/freeDiameter/pcrf.conf" ]; then
+                echo "✓ freeDiameter configuration exists"
+              else
+                echo "✗ freeDiameter configuration missing"
+              fi
+
+              echo "=== Starting PCRF daemon ==="
+              exec /open5gs/install/bin/open5gs-pcrfd -c /open5gs/install/etc/open5gs/pcrf.yaml -l /tmp/open5gs/logs/pcrf.log
+          env:
+            - name: COMPONENT_NAME
+              value: pcrf
+          ports:
+            - containerPort: 3868
+              protocol: TCP
+              name: diameter-rx
+            - containerPort: 9091
+              protocol: TCP
+              name: metrics
+          livenessProbe:
+            exec:
+              command:
+                - pgrep
+                - open5gs-pcrfd
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 3868
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: pcrf-config
+              mountPath: /etc/open5gs-config
+            - name: pcrf-logs
+              mountPath: /tmp/open5gs/logs
+      volumes:
+        - name: pcrf-config
+          configMap:
+            name: pcrf-config
+        - name: pcrf-logs
+          emptyDir: {}
+      restartPolicy: Always

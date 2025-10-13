@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hss
+  labels:
+    io.kompose.service: hss
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hss
+  template:
+    metadata:
+      labels:
+        io.kompose.service: hss
+    spec:
+      containers:
+        - name: hss
+          image: default-route-openshift-image-registry.apps-crc.testing/ims/docker_open5gs:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting HSS Open5GS with MongoDB and freeDiameter peers..."
+              mkdir -p /tmp/open5gs/logs
+              
+              # Update the MongoDB connection
+              sed -i 's|mongodb://localhost|mongodb://mongo|g' /open5gs/install/etc/open5gs/hss.yaml
+
+              # Modify hss.yaml metrics to listen on all interfaces
+              sed -i 's/address: 127.0.0.8/address: 0.0.0.0/' /open5gs/install/etc/open5gs/hss.yaml
+
+              # Update freeDiameter hss.conf to listen on all interfaces
+              sed -i 's|ListenOn = "127.0.0.8";|ListenOn = "0.0.0.0";|' /open5gs/install/etc/freeDiameter/hss.conf
+
+              # Comment out any existing peers to avoid duplicates
+              sed -i 's/ConnectPeer = "mme.localdomain"/#&/' /open5gs/install/etc/freeDiameter/hss.conf
+              sed -i 's/ConnectPeer = "scscf.localdomain"/#&/' /open5gs/install/etc/freeDiameter/hss.conf
+              sed -i 's/ConnectPeer = "icscf.localdomain"/#&/' /open5gs/install/etc/freeDiameter/hss.conf
+              sed -i 's/ConnectPeer = "pcscf.localdomain"/#&/' /open5gs/install/etc/freeDiameter/hss.conf
+
+              # Wait for IMS services to be resolvable
+              echo "=== Waiting for IMS services DNS resolution ==="
+              for service in scscf.ims.svc.cluster.local icscf.ims.svc.cluster.local pcscf.ims.svc.cluster.local; do
+                echo "Waiting for $service..."
+                for i in {1..30}; do
+                  if getent hosts $service > /dev/null 2>&1; then
+                    echo "✓ $service is resolvable"
+                    break
+                  fi
+                  echo "  Attempt $i/30..."
+                  sleep 2
+                done
+              done
+
+              # Add clean Diameter peers configuration ONLY if services are resolvable
+              echo "" >> /open5gs/install/etc/freeDiameter/hss.conf
+              echo "# IMS Diameter Peers Configuration" >> /open5gs/install/etc/freeDiameter/hss.conf
+              
+              if getent hosts scscf.ims.svc.cluster.local > /dev/null 2>&1; then
+                echo 'ConnectPeer = "scscf.localdomain" { ConnectTo = "scscf.ims.svc.cluster.local"; No_TLS; Port=6060; };' >> /open5gs/install/etc/freeDiameter/hss.conf
+              fi
+              
+              if getent hosts icscf.ims.svc.cluster.local > /dev/null 2>&1; then
+                echo 'ConnectPeer = "icscf.localdomain" { ConnectTo = "icscf.ims.svc.cluster.local"; No_TLS; Port=3869; };' >> /open5gs/install/etc/freeDiameter/hss.conf
+              fi
+              
+              if getent hosts pcscf.ims.svc.cluster.local > /dev/null 2>&1; then
+                echo 'ConnectPeer = "pcscf.localdomain" { ConnectTo = "pcscf.ims.svc.cluster.local"; No_TLS; Port=3868; };' >> /open5gs/install/etc/freeDiameter/hss.conf
+              fi
+
+              echo "=== HSS freeDiameter configuration updated ==="
+              echo "Configured peers:"
+              grep "ConnectPeer.*localdomain" /open5gs/install/etc/freeDiameter/hss.conf
+
+              # Validate configuration
+              echo "=== Validating HSS configuration ==="
+              if [ -f "/open5gs/install/etc/open5gs/hss.yaml" ]; then
+                echo "✓ HSS YAML configuration exists"
+              else
+                echo "✗ HSS YAML configuration missing"
+              fi
+              
+              if [ -f "/open5gs/install/etc/freeDiameter/hss.conf" ]; then
+                echo "✓ freeDiameter configuration exists"
+              else
+                echo "✗ freeDiameter configuration missing"
+              fi
+
+              echo "=== Starting HSS daemon ==="
+              # Start HSS with proper logging
+              exec /open5gs/install/bin/open5gs-hssd -c /open5gs/install/etc/open5gs/hss.yaml -l /tmp/open5gs/logs/hss.log
+          env:
+            - name: COMPONENT_NAME
+              value: hss
+          ports:
+            - containerPort: 3868
+              protocol: TCP
+              name: diameter
+            - containerPort: 9090
+              protocol: TCP
+              name: metrics
+          livenessProbe:
+            exec:
+              command:
+                - pgrep
+                - open5gs-hssd
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 3868
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: hss-logs
+              mountPath: /tmp/open5gs/logs
+      volumes:
+        - name: hss-logs
+          emptyDir: {}
+      restartPolicy: Always

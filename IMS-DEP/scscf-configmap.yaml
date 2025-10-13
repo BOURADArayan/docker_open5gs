@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scscf-config
+  namespace: ims
+data:
+  kamailio.cfg: |
+    # S-CSCF Kamailio Configuration
+    # Basic configuration for S-CSCF (Serving Call Session Control Function)
+    # This is a placeholder - to be customized based on your IMS requirements

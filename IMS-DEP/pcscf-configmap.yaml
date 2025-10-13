@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pcscf-config
+  namespace: ims
+data:
+  kamailio.cfg: |
+    # P-CSCF Kamailio Configuration
+    # Basic configuration for P-CSCF (Proxy Call Session Control Function)
+    # This is a placeholder - to be customized based on your IMS requirements
